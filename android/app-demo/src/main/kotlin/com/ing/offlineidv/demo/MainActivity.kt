@@ -22,14 +22,25 @@ import com.ing.offlineidv.ui.AtlasVerifyApp
 /** Launchable, offline-only host for the explicitly synthetic Project Atlas demo. */
 public class MainActivity : ComponentActivity() {
     private val viewModel: AtlasDemoViewModel by lazy {
-        ViewModelProvider(this, AtlasDemoViewModel.Factory(applicationContext))[AtlasDemoViewModel::class.java]
+        ViewModelProvider(
+            this,
+            AtlasDemoViewModel.Factory(applicationContext),
+        )[AtlasDemoViewModel::class.java]
     }
 
     private val cameraPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission(), viewModel::onCameraPermissionResult)
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            viewModel.onCameraPermissionResult(
+                granted,
+            )
+        }
 
     private val permissionRequester: () -> Unit = {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA,
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
             viewModel.onCameraPermissionResult(true)
         } else {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
