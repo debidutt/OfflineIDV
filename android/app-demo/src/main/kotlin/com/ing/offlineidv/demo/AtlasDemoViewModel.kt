@@ -18,8 +18,6 @@ internal class AtlasDemoViewModel(
     private val controller: AtlasDemoController,
     private val permissionGateway: CameraPermissionGateway,
 ) : ViewModel() {
-    private val observation = controller.observe { state = it }
-
     var state: AtlasUiState by mutableStateOf(controller.state)
         private set
 
@@ -28,6 +26,8 @@ internal class AtlasDemoViewModel(
 
     var nfcAvailability: AtlasNfcAvailability by mutableStateOf(AtlasNfcAvailability.UNKNOWN)
         private set
+
+    private val observation = controller.observe { state = it }
 
     fun dispatch(action: AtlasUiAction) {
         controller.dispatch(action)
