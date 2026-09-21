@@ -83,6 +83,14 @@ The OCR adapter uses `com.google.mlkit:text-recognition:16.0.1`, the statically 
 
 It does not parse ICAO fields, calculate check digits, interpret dates, correct ambiguous fields, or declare validity. `RealMrzPipeline` passes the candidate to the existing Milestone 2 `Td3MrzParser`, maps its `MrzValidationResult` through the existing Milestone 3 `MrzEvidenceMapper`, and keeps derived printed/access material in the session artifact store.
 
+## Privacy-safe physical-scan diagnostics
+
+Real Android Mode injects a diagnostic sink into `RealMrzPipeline` only when the installed application is debuggable. The pure-Kotlin pipeline remains Android-free, and release builds provide a disabled sink. Diagnostics cannot influence verification: sink failures are contained and the reducer, policy evaluator, MRZ thresholds, and parser result remain unchanged.
+
+The sink emits only the `MRZ_DIAG` prefix, OCR block/line counts, selected-candidate line counts and lengths, the closed `TD3`/`UNKNOWN` format classification, closed stage statuses, and a predefined failure-reason enum. `NOT_RUN` distinguishes a skipped downstream stage from an actual parser or validation failure. The diagnostic contract has no string or byte-array field capable of carrying OCR text, MRZ lines, names, document numbers, dates, or other identity values. `MlKitOcrEngine` supplies only `textBlocks.size`; the recognized text remains redacted inside `OcrTextArtifact`.
+
+These diagnostics distinguish no-candidate, wrong-length/normalization, parse, checksum/validation, and later orchestration investigations during authorized physical-device testing. They are not analytics and are not persisted.
+
 ## Runtime composition
 
 `AtlasRuntimeMode` is selectable only on Welcome:
@@ -97,7 +105,7 @@ The same mapper, capture action, processing screens, recovery presentation, and 
 ## Privacy and limitations
 
 - The manifest adds only `CAMERA`; `INTERNET` and NFC permissions remain absent.
-- No image, OCR text, MRZ, path, platform exception message, or sensitive metadata is logged or added to analytics.
+- No image, OCR text, MRZ content, path, platform exception message, or identity metadata is logged or added to analytics. Debuggable builds may emit only the closed, payload-free structural diagnostics documented above.
 - Backup remains disabled and cleartext traffic remains disabled.
 - Real capture requires a physical/emulated back camera and a granted runtime permission.
 - The quality heuristic is deliberately basic and requires calibration across representative devices before production assessment.

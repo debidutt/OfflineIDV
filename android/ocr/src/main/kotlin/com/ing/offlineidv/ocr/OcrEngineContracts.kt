@@ -23,7 +23,14 @@ public class OcrDocumentInput(
 /** OCR-derived text retained only behind a trusted artifact boundary. */
 public class OcrTextArtifact(
     private val text: String,
+    public val recognizedTextBlockCount: Int? = null,
 ) {
+    init {
+        require(recognizedTextBlockCount == null || recognizedTextBlockCount >= 0) {
+            "recognizedTextBlockCount must not be negative"
+        }
+    }
+
     /** Supplies recognized text only to a trusted MRZ-extraction boundary. */
     public fun <R> useText(block: (CharSequence) -> R): R = block(text)
 

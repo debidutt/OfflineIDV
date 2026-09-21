@@ -20,6 +20,18 @@ public class RealMrzPipelineTest {
         assertTrue(VerificationEvidence.MRZ_STRUCTURE_VALID in result.summary.evidence)
         assertTrue(VerificationEvidence.MRZ_CHECK_DIGITS_VALID in result.summary.evidence)
         assertEquals(3, fixture.store.size)
+        with(fixture.diagnostics.single()) {
+            assertTrue(ocrSuccessful)
+            assertEquals(2, textBlockCount)
+            assertEquals(2, recognizedLineCount)
+            assertEquals(2, candidateLineCount)
+            assertEquals(listOf(44, 44), candidateLengths)
+            assertEquals(MrzDiagnosticFormat.TD3, format)
+            assertEquals(MrzDiagnosticStatus.SUCCESS, normalization)
+            assertEquals(MrzDiagnosticStatus.SUCCESS, parse)
+            assertEquals(MrzDiagnosticStatus.SUCCESS, validation)
+            assertEquals(MrzDiagnosticFailureReason.NONE, failureReason)
+        }
     }
 
     @Test
@@ -28,6 +40,11 @@ public class RealMrzPipelineTest {
         val result = fixture.pipeline.process(fixture.ocrReference).success()
 
         assertTrue(VerificationEvidence.MRZ_CHECK_DIGITS_INVALID in result.summary.evidence)
+        with(fixture.diagnostics.single()) {
+            assertEquals(MrzDiagnosticStatus.SUCCESS, parse)
+            assertEquals(MrzDiagnosticStatus.FAILURE, validation)
+            assertEquals(MrzDiagnosticFailureReason.CHECK_DIGIT_MISMATCH, failureReason)
+        }
     }
 
     @Test
@@ -37,13 +54,72 @@ public class RealMrzPipelineTest {
 
         assertEquals("ocr.no_mrz_candidate", result.error.code)
         assertTrue(result.error.toString().contains("ocr.no_mrz_candidate"))
+        with(fixture.diagnostics.single()) {
+            assertTrue(ocrSuccessful)
+            assertEquals(1, recognizedLineCount)
+            assertEquals(0, candidateLineCount)
+            assertEquals(emptyList<Int>(), candidateLengths)
+            assertEquals(MrzDiagnosticFormat.UNKNOWN, format)
+            assertEquals(MrzDiagnosticStatus.NOT_RUN, normalization)
+            assertEquals(MrzDiagnosticStatus.NOT_RUN, parse)
+            assertEquals(MrzDiagnosticStatus.NOT_RUN, validation)
+            assertEquals(MrzDiagnosticFailureReason.NO_MRZ_CANDIDATE, failureReason)
+        }
     }
 
-    private fun fixture(text: String = validMrz()): Fixture {
+    @Test
+    public fun `candidate lengths identify normalization failure without exposing text`() {
+        val lines = validMrz().lines()
+        val fixture = fixture("${lines.first().dropLast(1)}\n${lines.last()}")
+
+        fixture.pipeline.process(fixture.ocrReference).success()
+
+        with(fixture.diagnostics.single()) {
+            assertEquals(listOf(43, 44), candidateLengths)
+            assertEquals(MrzDiagnosticFormat.UNKNOWN, format)
+            assertEquals(MrzDiagnosticStatus.FAILURE, normalization)
+            assertEquals(MrzDiagnosticStatus.FAILURE, parse)
+            assertEquals(MrzDiagnosticStatus.FAILURE, validation)
+            assertEquals(MrzDiagnosticFailureReason.INCORRECT_LINE_LENGTH, failureReason)
+            assertTrue(toString().contains("candidateLengths=[43, 44]"))
+            assertTrue(!toString().contains("SYNTHETIC"))
+            assertTrue(!toString().contains("A12B34567"))
+        }
+    }
+
+    @Test
+    public fun `diagnostic sink failure cannot change MRZ behavior`() {
+        val fixture = fixture(diagnosticSink = MrzDiagnosticSink { error("diagnostic failure") })
+
+        val result = fixture.pipeline.process(fixture.ocrReference).success()
+
+        assertTrue(VerificationEvidence.MRZ_STRUCTURE_VALID in result.summary.evidence)
+        assertTrue(VerificationEvidence.MRZ_CHECK_DIGITS_VALID in result.summary.evidence)
+    }
+
+    private fun fixture(
+        text: String = validMrz(),
+        diagnosticSink: MrzDiagnosticSink? = null,
+    ): Fixture {
         val session = (IdvSessionId.parse("atlas_real_mrz_test") as IdvResult.Success).value
         val store = SessionArtifactStore(session)
-        val reference = store.register(VerificationArtifactKind.OCR_RESULT, OcrTextArtifact(text)).success()
-        return Fixture(store, reference, RealMrzPipeline(store, LocalDate.of(2026, 8, 31)))
+        val diagnostics = mutableListOf<MrzDiagnosticSnapshot>()
+        val reference =
+            store
+                .register(
+                    VerificationArtifactKind.OCR_RESULT,
+                    OcrTextArtifact(text, recognizedTextBlockCount = 2),
+                ).success()
+        return Fixture(
+            store,
+            reference,
+            RealMrzPipeline(
+                artifactStore = store,
+                referenceDate = LocalDate.of(2026, 8, 31),
+                diagnosticSink = diagnosticSink ?: MrzDiagnosticSink(diagnostics::add),
+            ),
+            diagnostics,
+        )
     }
 
     private fun validMrz(): String {
@@ -85,5 +161,6 @@ public class RealMrzPipelineTest {
         val store: SessionArtifactStore,
         val ocrReference: com.ing.offlineidv.verification.model.VerificationArtifactReference,
         val pipeline: RealMrzPipeline,
+        val diagnostics: List<MrzDiagnosticSnapshot>,
     )
 }

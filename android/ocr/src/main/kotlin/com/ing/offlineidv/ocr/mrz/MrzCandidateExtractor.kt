@@ -8,6 +8,9 @@ public class MrzCandidate internal constructor(
     private val secondLine: String,
     public val score: Int,
 ) {
+    /** Safe structural metadata for diagnostics; no recognized characters are exposed. */
+    public val lineLengths: List<Int> = listOf(firstLine.length, secondLine.length)
+
     /** Supplies the candidate only to the existing MRZ parser boundary. */
     public fun <R> useText(block: (CharSequence) -> R): R = block("$firstLine\n$secondLine")
 

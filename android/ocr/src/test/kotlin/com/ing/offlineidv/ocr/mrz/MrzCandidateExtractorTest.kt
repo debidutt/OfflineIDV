@@ -13,7 +13,10 @@ public class MrzCandidateExtractorTest {
 
     @Test
     public fun `clean OCR produces TD3 candidate`() {
-        assertEquals(MRZ, extract(MRZ))
+        val candidate = requireNotNull(extractor.extract(MRZ))
+
+        assertEquals(MRZ, candidate.useText { it.toString() })
+        assertEquals(listOf(44, 44), candidate.lineLengths)
     }
 
     @Test

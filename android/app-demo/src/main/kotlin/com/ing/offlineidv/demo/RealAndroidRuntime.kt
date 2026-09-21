@@ -2,6 +2,7 @@ package com.ing.offlineidv.demo
 
 import android.app.Activity
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.os.Handler
 import android.os.Looper
 import androidx.camera.core.Preview
@@ -717,7 +718,16 @@ internal object RealAndroidVerificationFactory {
                 documentCaptureEngine = camera,
                 documentQualityEngine = quality,
                 ocrEngine = ocr,
-                mrzPipeline = RealMrzPipeline(artifactStore, LocalDate.now(ZoneOffset.UTC)),
+                mrzPipeline =
+                    RealMrzPipeline(
+                        artifactStore = artifactStore,
+                        referenceDate = LocalDate.now(ZoneOffset.UTC),
+                        diagnosticSink =
+                            MrzDebugDiagnosticSink(
+                                enabled =
+                                    context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
+                            ),
+                    ),
                 nfcEngine = nfc,
                 chipValidationEngine = PassportChipValidationEngine,
                 printedChipComparisonEngine = Td3PrintedChipComparisonEngine,

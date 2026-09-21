@@ -59,7 +59,14 @@ public class MlKitOcrEngine(
         task
             .addOnSuccessListener { text ->
                 if (!cancelled.get() && !closed.get()) {
-                    callback(OcrEngineResult.Recognized(OcrTextArtifact(text.text)))
+                    callback(
+                        OcrEngineResult.Recognized(
+                            OcrTextArtifact(
+                                text = text.text,
+                                recognizedTextBlockCount = text.textBlocks.size,
+                            ),
+                        ),
+                    )
                 }
             }.addOnFailureListener {
                 if (!cancelled.get() && !closed.get()) {
