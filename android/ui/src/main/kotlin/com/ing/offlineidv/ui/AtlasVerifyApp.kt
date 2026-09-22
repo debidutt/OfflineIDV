@@ -78,6 +78,7 @@ public object AtlasTestTags {
     public const val CONTINUE: String = "continue"
     public const val CAPTURE: String = "capture"
     public const val NFC: String = "nfc"
+    public const val NFC_STATUS: String = "nfc_status"
     public const val SELFIE: String = "selfie"
     public const val RETRY: String = "retry"
     public const val CANCEL: String = "cancel"
@@ -662,13 +663,14 @@ private fun NfcScreen(
     nfcAvailability: AtlasNfcAvailability,
     onAction: (AtlasUiAction) -> Unit,
 ) {
+    val statusCopy = state.scanStatus.presentationCopy()
     ScreenColumn {
         ScreenTitle(
-            if (runtimeMode == AtlasRuntimeMode.DEMO) "Passport data extracted" else "Read document chip",
+            if (runtimeMode == AtlasRuntimeMode.DEMO) "Passport data extracted" else statusCopy.first,
             if (runtimeMode == AtlasRuntimeMode.DEMO) {
                 "Review the safe MRZ signals, then continue to the chip step."
             } else {
-                "Hold the top/back of your phone against the contactless document."
+                statusCopy.second
             },
             announce = true,
         )
@@ -700,19 +702,88 @@ private fun NfcScreen(
                 AtlasNfcAvailability.AVAILABLE,
                 AtlasNfcAvailability.UNKNOWN,
                 -> {
-                    InfoNote("Keep the document still until the chip read finishes. No authenticity claim is made.")
+                    InfoNote("Keep the document still until all required chip checks finish.")
                 }
             }
         }
-        Button(
-            onClick = { onAction(AtlasUiAction.StartNfc) },
-            modifier = Modifier.fillMaxWidth().height(56.dp).semantics { testTag = AtlasTestTags.NFC },
+        if (
+            runtimeMode == AtlasRuntimeMode.REAL_ANDROID &&
+            state.scanStatus in setOf(AtlasNfcScanStatus.CONNECTING, AtlasNfcScanStatus.SCAN_IN_PROGRESS)
         ) {
-            Text(if (runtimeMode == AtlasRuntimeMode.DEMO) "Simulate chip read" else "Read document chip")
+            Row(
+                modifier = Modifier.fillMaxWidth().semantics { testTag = AtlasTestTags.NFC_STATUS },
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(
+                    modifier =
+                        Modifier.size(32.dp).semantics {
+                            progressBarRangeInfo = androidx.compose.ui.semantics.ProgressBarRangeInfo.Indeterminate
+                        },
+                )
+                Text(statusCopy.first, fontWeight = FontWeight.Bold)
+            }
+        } else if (runtimeMode == AtlasRuntimeMode.REAL_ANDROID) {
+            Text(
+                statusCopy.first,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.semantics { testTag = AtlasTestTags.NFC_STATUS },
+            )
+        }
+        if (runtimeMode == AtlasRuntimeMode.DEMO || state.scanStatus == AtlasNfcScanStatus.READY_TO_SCAN) {
+            Button(
+                onClick = { onAction(AtlasUiAction.StartNfc) },
+                modifier = Modifier.fillMaxWidth().height(56.dp).semantics { testTag = AtlasTestTags.NFC },
+            ) {
+                Text(if (runtimeMode == AtlasRuntimeMode.DEMO) "Simulate chip read" else "Start chip scan")
+            }
         }
         CancelButton(onAction)
     }
 }
+
+private fun AtlasNfcScanStatus.presentationCopy(): Pair<String, String> =
+    when (this) {
+        AtlasNfcScanStatus.READY_TO_SCAN -> {
+            "Ready to scan" to "Hold the top or back of your phone against the contactless document."
+        }
+
+        AtlasNfcScanStatus.CHIP_DETECTED -> {
+            "Chip detected" to "Keep the document against the phone while a secure connection is prepared."
+        }
+
+        AtlasNfcScanStatus.CONNECTING -> {
+            "Connecting" to "Opening a secure connection to the document chip."
+        }
+
+        AtlasNfcScanStatus.SCAN_IN_PROGRESS -> {
+            "Scan in progress" to "Reading and checking the required chip data on this device."
+        }
+
+        AtlasNfcScanStatus.SCAN_COMPLETE -> {
+            "Scan complete" to "Chip communication completed. Checking the resulting verification evidence."
+        }
+
+        AtlasNfcScanStatus.CONNECTION_LOST -> {
+            "Connection lost" to "Hold the document against the phone again and retry."
+        }
+
+        AtlasNfcScanStatus.AUTHENTICATION_FAILED -> {
+            "Chip authentication failed" to "The document chip did not accept the protected-access attempt."
+        }
+
+        AtlasNfcScanStatus.UNSUPPORTED_CHIP -> {
+            "Unsupported document chip" to "This document chip is not supported by this build."
+        }
+
+        AtlasNfcScanStatus.TIMED_OUT -> {
+            "Chip scan timed out" to "Hold the document firmly against the phone and retry."
+        }
+
+        AtlasNfcScanStatus.SCAN_FAILED -> {
+            "Chip scan failed" to "The chip scan could not complete."
+        }
+    }
 
 @Composable
 private fun NfcGraphic(description: String) {

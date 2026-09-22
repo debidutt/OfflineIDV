@@ -12,7 +12,7 @@ Project Atlas does not implement cryptographic primitives or construct protocol 
 VerificationStateMachine
   -> StartNfcRead(operation token, opaque access-key reference)
   -> RealVerificationEffectHandler resolves access material in the session store
-  -> NfcSessionCoordinator starts one cancellable read
+  -> NfcSessionCoordinator starts one cancellable read and emits payload-free progress
   -> AndroidNfcTagDiscovery enables reader mode only while the host is resumed and a read is pending
   -> NfcAdapter.ReaderCallback keeps Tag inside the Android adapter
   -> IsoDep.get(Tag) and AndroidPassportChipSession own connect/timeout/close
@@ -36,13 +36,21 @@ The composition root advertises the reducer's NFC capability when hardware exist
 
 ## Tag discovery lifecycle
 
-The Activity attaches to the discovery adapter while resumed and detaches while paused. The adapter enables Android reader mode only when all three conditions hold: an Activity is attached, NFC is available, and one read is pending. Detach, cancellation, completion, and close disable reader mode. Activity recreation can reattach the same ViewModel-owned runtime without placing an Activity, `Tag`, or `IsoDep` in reducer or Compose state.
+The Activity attaches to the discovery adapter while resumed and detaches while paused. The adapter enables Android reader mode only when all three conditions hold: an Activity is attached, NFC is available, and one read is pending. Detach disables reader mode and closes a claimed physical-tag lease, including the detach/discovery race; a pending read that has not discovered a tag can resume discovery when the host reattaches. Cancellation, completion, and close also disable reader mode and close the lease. Activity recreation can reattach the same ViewModel-owned runtime without placing an Activity, `Tag`, or `IsoDep` in reducer or Compose state.
 
 The coordinator accepts one tag session for one active read. Duplicate tags are closed. Callbacks from cancelled or replaced reads are ignored, and their sessions are closed. Terminal cleanup cancels the active coordinator operation before clearing artifacts.
 
+One short, best-effort vibration is requested after a new physical tag callback has been claimed. A per-discovery atomic gate prevents repeated pulses during the same read. The adapter uses `VibratorManager` on API 31 and newer, the compatible `Vibrator` service below API 31, checks `hasVibrator`, and catches platform failures. Demo engines never construct or call this adapter. The manifest declares the normal `VIBRATE` permission; no runtime permission prompt is needed.
+
+## Reactive progress and safe diagnostics
+
+The NFC feature emits only `TAG_DETECTED`, `CONNECTING`, and `READING`. The real effect handler translates them into token-bound verification events, the reducer owns monotonic `NfcReadPhase`, and the shared mapper projects Ready to scan, Chip detected, Connecting, Scan in progress, and Scan complete. Connection loss, access denial, unsupported chip/access control, timeout, and other errors remain distinct predefined reducer recovery observations. Compose never interprets APDUs, authentication evidence, or product outcomes, and the progress indicator is indeterminate rather than a fabricated percentage.
+
+Debuggable builds can receive `NFC_DIAG` lines for closed stages such as reader mode, tag discovery, `IsoDep`, CardAccess, PACE/BAC, DG1, Passive Authentication, DG14, and Chip Authentication. Diagnostics contain only stage/status enums, predefined safe error codes, and closed authenticity observations. Raw MRZ values, access keys, tag identifiers, APDUs, status payloads, certificates, exception messages, and LDS data cannot be represented by the diagnostic contract. Diagnostic failures never alter verification behavior.
+
 ## IsoDep boundary
 
-`AndroidNfcTagDiscovery` calls `IsoDep.get(Tag)` and creates `AndroidPassportChipSession`; neither Android type leaves the NFC platform package. The session owns the connection timeout, connection-loss translation, and idempotent `close`. Atlas exposes no public `transceive` or APDU-byte API.
+`AndroidNfcTagDiscovery` calls `IsoDep.get(Tag)` and creates `AndroidPassportChipSession`; neither Android type leaves the NFC platform package. The session owns the connection timeout, connection-loss translation, and idempotent `close`. Transport close is allowed to run concurrently with a blocked APDU so cancellation or host detachment can interrupt `IsoDep`; a close-requested I/O failure retains `TAG_LOST` instead of being reclassified as authentication denial. Atlas exposes no public `transceive` or APDU-byte API.
 
 `IsoDepCardServiceBridge` is the only production source allowed to mention Scuba command/response APDU types or call `IsoDep.transceive`. It registers no listener, keeps no transcript, caps command and response frames at the smaller of the device maximum and 64 KiB, clears Atlas-owned temporary command/response copies, and emits only finite transport classifications. `JmrtdPassportProtocolReader` contains JMRTD file access and BAC/PACE calls; `PassportChipAuthenticity` contains JMRTD/Java-provider signature, certificate, hash, and Chip Authentication calls. Third-party JUL namespaces are disabled before protocol use, and raw exceptions, messages, keys, document data, APDUs, status payloads, certificates, and library object strings never leave the adapter.
 
@@ -78,7 +86,7 @@ No raw APDU, DG, access key, document number, name, date, nationality, portrait,
 
 ## Offline and manifest boundary
 
-The source manifest declares optional NFC hardware and `android.permission.NFC`. It continues to remove `INTERNET` and `ACCESS_NETWORK_STATE` contributions. The runtime makes no network request. Final verification audits the source manifest, merged manifest, binary APK permissions, and packaged dependencies.
+The source manifest declares optional NFC hardware plus `android.permission.NFC` and the normal `android.permission.VIBRATE`. It continues to remove `INTERNET` and `ACCESS_NETWORK_STATE` contributions. The runtime makes no network request. Final verification audits the source manifest, merged manifest, binary APK permissions, and packaged dependencies.
 
 ## Device-test strategy and limitations
 

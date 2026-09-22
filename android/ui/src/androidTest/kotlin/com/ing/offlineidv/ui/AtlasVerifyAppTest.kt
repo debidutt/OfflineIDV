@@ -180,8 +180,8 @@ public class AtlasVerifyAppTest {
             )
         }
 
-        composeRule.onNodeWithText("Read document chip").assertExists()
-        composeRule.onNodeWithText("Hold the top/back of your phone against the contactless document.").assertExists()
+        composeRule.onNodeWithText("Ready to scan").assertExists()
+        composeRule.onNodeWithText("Hold the top or back of your phone against the contactless document.").assertExists()
         composeRule.onNodeWithContentDescription(AtlasAccessibility.NFC_READER).assertExists()
         composeRule.onNodeWithText("Simulated NFC — no NFC hardware used. No authenticity claim is made.").assertDoesNotExist()
     }
@@ -198,7 +198,28 @@ public class AtlasVerifyAppTest {
         }
 
         composeRule.onNodeWithText("NFC is turned off. Enable NFC in Android settings, then return to continue.").assertExists()
-        composeRule.onNodeWithText("Read document chip").assertExists()
+        composeRule.onNodeWithText("Ready to scan").assertExists()
+    }
+
+    @Test
+    public fun realNfcCommunicationShowsIndeterminateProgressWithoutPercentage() {
+        composeRule.setContent {
+            AtlasVerifyApp(
+                state =
+                    AtlasUiState.Nfc(
+                        progress(2),
+                        emptyList(),
+                        AtlasNfcScanStatus.SCAN_IN_PROGRESS,
+                    ),
+                runtimeMode = AtlasRuntimeMode.REAL_ANDROID,
+                nfcAvailability = AtlasNfcAvailability.AVAILABLE,
+                onAction = {},
+            )
+        }
+
+        composeRule.onNodeWithText("Scan in progress").assertExists()
+        composeRule.onNodeWithTag(AtlasTestTags.NFC_STATUS).assertExists()
+        composeRule.onNodeWithText("Start chip scan").assertDoesNotExist()
     }
 
     @Test

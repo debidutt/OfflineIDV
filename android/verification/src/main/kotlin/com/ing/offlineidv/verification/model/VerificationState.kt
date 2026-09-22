@@ -70,8 +70,17 @@ public data class AwaitingNfc(
     override val progress: VerificationProgress,
 ) : AwaitingUserState
 
+/** Payload-free NFC communication phase emitted through the engine boundary. */
+public enum class NfcReadPhase {
+    READY_TO_SCAN,
+    CHIP_DETECTED,
+    CONNECTING,
+    SCAN_IN_PROGRESS,
+}
+
 public data class ReadingNfc(
     override val progress: VerificationProgress,
+    public val phase: NfcReadPhase = NfcReadPhase.READY_TO_SCAN,
 ) : ProcessingState
 
 public data class ValidatingChipData(

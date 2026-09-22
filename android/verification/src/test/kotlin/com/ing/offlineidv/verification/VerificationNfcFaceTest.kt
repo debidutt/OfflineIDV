@@ -1,5 +1,7 @@
 package com.ing.offlineidv.verification
 
+import com.ing.offlineidv.core.error.IdvError
+import com.ing.offlineidv.core.error.NfcFailure
 import com.ing.offlineidv.verification.fixtures.StateMachineHarness
 import com.ing.offlineidv.verification.fixtures.VerificationFixtures
 import com.ing.offlineidv.verification.fixtures.advanceToAwaitingSelfie
@@ -22,6 +24,7 @@ import com.ing.offlineidv.verification.model.EvaluatingSelfie
 import com.ing.offlineidv.verification.model.FaceComparisonStatus
 import com.ing.offlineidv.verification.model.Inconclusive
 import com.ing.offlineidv.verification.model.MakingDecision
+import com.ing.offlineidv.verification.model.NfcReadPhase
 import com.ing.offlineidv.verification.model.PassiveAuthenticationStatus
 import com.ing.offlineidv.verification.model.PrintedChipComparisonStatus
 import com.ing.offlineidv.verification.model.ReadingNfc
@@ -138,6 +141,58 @@ public class VerificationNfcFaceTest {
             VerificationEvidence.NFC_CHIP_READ in
                 (result.state as ValidatingChipData).progress.evidence,
         )
+    }
+
+    @Test
+    public fun `NFC progress is reducer owned and monotonic`() {
+        val harness = StateMachineHarness()
+        harness.advanceToNfcRead()
+
+        listOf(
+            NfcReadPhase.CHIP_DETECTED,
+            NfcReadPhase.CONNECTING,
+            NfcReadPhase.SCAN_IN_PROGRESS,
+        ).forEach { phase ->
+            harness.dispatch(VerificationEvent.NfcProgressed(harness.operation(), phase))
+            assertEquals(phase, (harness.state as ReadingNfc).phase)
+        }
+
+        harness.dispatch(VerificationEvent.NfcProgressed(harness.operation(), NfcReadPhase.CONNECTING))
+        assertEquals(NfcReadPhase.SCAN_IN_PROGRESS, (harness.state as ReadingNfc).phase)
+    }
+
+    @Test
+    public fun `connection loss preserves distinct error and retry restarts ready to scan`() {
+        val harness = StateMachineHarness()
+        harness.advanceToNfcRead()
+        harness.dispatch(
+            VerificationEvent.NfcReadFailed(
+                harness.operation(),
+                IdvError.Nfc(NfcFailure.TAG_LOST),
+            ),
+        )
+
+        val recovery = harness.state as RecoveryRequired
+        assertEquals(NfcFailure.TAG_LOST, recovery.error?.reason)
+        harness.dispatch(VerificationEvent.Retry)
+
+        assertEquals(NfcReadPhase.READY_TO_SCAN, (harness.state as ReadingNfc).phase)
+        assertEquals(2, (harness.state as ReadingNfc).progress.retries.attemptsFor(RetryableStep.NFC))
+    }
+
+    @Test
+    public fun `access denial remains distinct from connection loss`() {
+        val harness = StateMachineHarness()
+        harness.advanceToNfcRead()
+
+        harness.dispatch(
+            VerificationEvent.NfcReadFailed(
+                harness.operation(),
+                IdvError.Nfc(NfcFailure.ACCESS_DENIED),
+            ),
+        )
+
+        assertEquals(NfcFailure.ACCESS_DENIED, (harness.state as RecoveryRequired).error?.reason)
     }
 
     @Test

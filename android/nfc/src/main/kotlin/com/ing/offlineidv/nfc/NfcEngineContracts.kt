@@ -2,6 +2,7 @@ package com.ing.offlineidv.nfc
 
 import com.ing.offlineidv.core.concurrency.CancellableOperation
 import com.ing.offlineidv.core.error.IdvError
+import com.ing.offlineidv.core.error.NfcFailure
 import com.ing.offlineidv.core.security.Redaction
 import com.ing.offlineidv.core.session.IdvSessionId
 
@@ -228,6 +229,106 @@ public fun interface AsyncPassportNfcEngine {
         request: NfcReadRequest,
         callback: (NfcReadResult) -> Unit,
     ): CancellableOperation
+
+    /**
+     * Starts one read with finite, payload-free progress observations.
+     *
+     * Implementations that do not expose progress remain source-compatible and delegate to the
+     * terminal-result-only boundary above.
+     */
+    public fun read(
+        request: NfcReadRequest,
+        progressObserver: NfcReadProgressObserver,
+        callback: (NfcReadResult) -> Unit,
+    ): CancellableOperation = read(request, callback)
+}
+
+/** Payload-free progress emitted by the NFC engine; it carries no tag, key, APDU, or LDS data. */
+public enum class NfcReadProgress {
+    TAG_DETECTED,
+    CONNECTING,
+    READING,
+}
+
+/** Optional observation boundary for real NFC progress. */
+public fun interface NfcReadProgressObserver {
+    public fun onProgress(progress: NfcReadProgress)
+
+    public companion object {
+        public val NONE: NfcReadProgressObserver = NfcReadProgressObserver { }
+    }
+}
+
+/** Coarse protocol stages accepted by privacy-safe debug diagnostics. */
+public enum class NfcDiagnosticStage {
+    READER_MODE,
+    TAG_DISCOVERY,
+    ISO_DEP,
+    CARD_ACCESS,
+    PACE,
+    BAC,
+    DG1,
+    PASSIVE_AUTHENTICATION,
+    DG14,
+    CHIP_AUTHENTICATION,
+    COMPLETE,
+}
+
+/** Closed diagnostic status containing no exception text or document data. */
+public enum class NfcDiagnosticStatus {
+    STARTED,
+    SUCCEEDED,
+    FAILED,
+}
+
+/** Closed authenticity observation suitable for payload-free device diagnostics. */
+public enum class NfcDiagnosticObservation {
+    NONE,
+    PASSIVE_AUTH_VALID,
+    PASSIVE_AUTH_FAILED,
+    PASSIVE_AUTH_UNAVAILABLE,
+    PASSIVE_AUTH_UNSUPPORTED,
+    PASSIVE_AUTH_TECHNICAL_ERROR,
+    DG14_HASH_VALID,
+    DG14_HASH_FAILED,
+    DG14_HASH_MISSING,
+    DG14_HASH_UNSUPPORTED,
+    CHIP_AUTH_SUCCEEDED,
+    CHIP_AUTH_FAILED,
+    CHIP_AUTH_NOT_PERFORMED,
+    CHIP_AUTH_PREREQUISITE_MISSING,
+    CHIP_AUTH_UNSUPPORTED,
+    CHIP_AUTH_SECURE_MESSAGING_FAILED,
+    CHIP_AUTH_TECHNICAL_ERROR,
+}
+
+/**
+ * Privacy-safe NFC diagnostic observation.
+ *
+ * Only closed stage/status values and an optional predefined error code are representable. Raw
+ * MRZ values, access keys, APDUs, tag identifiers, certificates, and LDS data are structurally
+ * absent.
+ */
+public data class NfcDiagnosticEvent(
+    public val stage: NfcDiagnosticStage,
+    public val status: NfcDiagnosticStatus,
+    public val failure: NfcFailure? = null,
+    public val observation: NfcDiagnosticObservation = NfcDiagnosticObservation.NONE,
+) {
+    init {
+        require((status == NfcDiagnosticStatus.FAILED) == (failure != null)) {
+            "Only failed NFC diagnostics may contain a predefined failure."
+        }
+    }
+}
+
+/** Optional local-only diagnostic boundary. */
+public fun interface NfcDiagnosticSink {
+    public fun record(event: NfcDiagnosticEvent)
+
+    public companion object {
+        public val NONE: NfcDiagnosticSink = NfcDiagnosticSink { }
+    }
 }
 
 /** Passive-authentication observation; this is not a general authenticity claim. */

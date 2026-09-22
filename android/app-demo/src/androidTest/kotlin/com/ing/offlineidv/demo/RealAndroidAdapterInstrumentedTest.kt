@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit
 @RunWith(AndroidJUnit4::class)
 public class RealAndroidAdapterInstrumentedTest {
     @Test
-    public fun `packaged app requests CAMERA and NFC but not INTERNET`() {
+    public fun `packaged app requests camera NFC and vibration but not network access`() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val permissions =
             context.packageManager
@@ -39,6 +39,7 @@ public class RealAndroidAdapterInstrumentedTest {
 
         assertTrue(Manifest.permission.CAMERA in permissions)
         assertTrue(Manifest.permission.NFC in permissions)
+        assertTrue(Manifest.permission.VIBRATE in permissions)
         assertFalse(Manifest.permission.INTERNET in permissions)
         assertFalse(Manifest.permission.ACCESS_NETWORK_STATE in permissions)
     }

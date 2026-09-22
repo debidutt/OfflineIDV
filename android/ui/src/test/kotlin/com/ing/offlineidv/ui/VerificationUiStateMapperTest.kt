@@ -2,6 +2,8 @@ package com.ing.offlineidv.ui
 
 import com.ing.offlineidv.core.config.DemoScenario
 import com.ing.offlineidv.core.config.IdvConfig
+import com.ing.offlineidv.core.error.IdvError
+import com.ing.offlineidv.core.error.NfcFailure
 import com.ing.offlineidv.core.result.IdvResult
 import com.ing.offlineidv.core.session.IdvSessionId
 import com.ing.offlineidv.verification.demo.DemoPromptMode
@@ -12,6 +14,8 @@ import com.ing.offlineidv.verification.model.AwaitingNfc
 import com.ing.offlineidv.verification.model.AwaitingSelfie
 import com.ing.offlineidv.verification.model.CameraReady
 import com.ing.offlineidv.verification.model.DocumentSelection
+import com.ing.offlineidv.verification.model.NfcReadPhase
+import com.ing.offlineidv.verification.model.ReadingNfc
 import com.ing.offlineidv.verification.model.RecoveryRequired
 import com.ing.offlineidv.verification.model.RetryCounter
 import com.ing.offlineidv.verification.model.TerminalState
@@ -69,10 +73,28 @@ public class VerificationUiStateMapperTest {
 
     @Test
     public fun `chip states map to chip progress`() {
-        val titles = mappedSuccessStates().filterIsInstance<AtlasUiState.Processing>().map { it.title }
-        assertTrue("Reading document chip" in titles)
-        assertTrue("Checking chip signals" in titles)
-        assertTrue("Comparing document signals" in titles)
+        val mapped = mappedSuccessStates().filterIsInstance<AtlasUiState.Nfc>()
+
+        assertTrue(mapped.any { it.scanStatus == AtlasNfcScanStatus.READY_TO_SCAN })
+        assertTrue(mapped.any { it.scanStatus == AtlasNfcScanStatus.SCAN_COMPLETE })
+    }
+
+    @Test
+    public fun `reading phases map to distinct reactive NFC presentation states`() {
+        val reading = successStates().filterIsInstance<ReadingNfc>().first()
+
+        assertEquals(
+            AtlasNfcScanStatus.CHIP_DETECTED,
+            (VerificationUiStateMapper.map(reading.copy(phase = NfcReadPhase.CHIP_DETECTED)) as AtlasUiState.Nfc).scanStatus,
+        )
+        assertEquals(
+            AtlasNfcScanStatus.CONNECTING,
+            (VerificationUiStateMapper.map(reading.copy(phase = NfcReadPhase.CONNECTING)) as AtlasUiState.Nfc).scanStatus,
+        )
+        assertEquals(
+            AtlasNfcScanStatus.SCAN_IN_PROGRESS,
+            (VerificationUiStateMapper.map(reading.copy(phase = NfcReadPhase.SCAN_IN_PROGRESS)) as AtlasUiState.Nfc).scanStatus,
+        )
     }
 
     @Test
@@ -100,7 +122,26 @@ public class VerificationUiStateMapperTest {
         val mapped = VerificationUiStateMapper.map(domain) as AtlasUiState.Recovery
 
         assertTrue(mapped.canRetry)
-        assertEquals("Chip read needs attention", mapped.title)
+        assertEquals("Chip scan timed out", mapped.title)
+        assertEquals(AtlasNfcScanStatus.TIMED_OUT, mapped.nfcScanStatus)
+    }
+
+    @Test
+    public fun `connection loss and authentication failure remain distinct in presentation`() {
+        fun recovery(error: NfcFailure): AtlasUiState.Recovery {
+            val runtime = interactiveRuntime(DemoScenario.NFC_TIMEOUT_THEN_SUCCESS)
+            driveToNfc(runtime)
+            runtime.orchestrator.dispatch(VerificationEvent.NfcRequested)
+            val domain = (runtime.orchestrator.state as RecoveryRequired).copy(error = IdvError.Nfc(error))
+            return VerificationUiStateMapper.map(domain) as AtlasUiState.Recovery
+        }
+
+        val lost = recovery(NfcFailure.TAG_LOST)
+        val denied = recovery(NfcFailure.ACCESS_DENIED)
+
+        assertEquals(AtlasNfcScanStatus.CONNECTION_LOST, lost.nfcScanStatus)
+        assertTrue(lost.detail.contains("Hold the document"))
+        assertEquals(AtlasNfcScanStatus.AUTHENTICATION_FAILED, denied.nfcScanStatus)
     }
 
     @Test

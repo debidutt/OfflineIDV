@@ -30,6 +30,7 @@ public sealed interface AtlasUiState {
     public data class Nfc(
         public val progress: AtlasProgress,
         public val evidence: List<AtlasEvidenceItem>,
+        public val scanStatus: AtlasNfcScanStatus = AtlasNfcScanStatus.READY_TO_SCAN,
     ) : AtlasUiState
 
     public data class Selfie(
@@ -42,6 +43,7 @@ public sealed interface AtlasUiState {
         public val detail: String,
         public val canRetry: Boolean,
         public val progress: AtlasProgress,
+        public val nfcScanStatus: AtlasNfcScanStatus? = null,
     ) : AtlasUiState
 
     public data class Result(
@@ -94,6 +96,20 @@ public enum class AtlasNfcAvailability {
     UNAVAILABLE,
     DISABLED,
     AVAILABLE,
+}
+
+/** Finite presentation-only NFC status derived from reducer state and predefined errors. */
+public enum class AtlasNfcScanStatus {
+    READY_TO_SCAN,
+    CHIP_DETECTED,
+    CONNECTING,
+    SCAN_IN_PROGRESS,
+    SCAN_COMPLETE,
+    CONNECTION_LOST,
+    AUTHENTICATION_FAILED,
+    UNSUPPORTED_CHIP,
+    TIMED_OUT,
+    SCAN_FAILED,
 }
 
 /** User intents accepted by the app-demo controller. */

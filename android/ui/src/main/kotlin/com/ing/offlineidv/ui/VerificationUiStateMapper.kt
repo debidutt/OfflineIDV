@@ -1,5 +1,7 @@
 package com.ing.offlineidv.ui
 
+import com.ing.offlineidv.core.error.NfcFailure
+import com.ing.offlineidv.core.error.VerificationFailure
 import com.ing.offlineidv.verification.model.AwaitingNfc
 import com.ing.offlineidv.verification.model.AwaitingSelfie
 import com.ing.offlineidv.verification.model.CameraPermissionRequired
@@ -18,6 +20,7 @@ import com.ing.offlineidv.verification.model.Idle
 import com.ing.offlineidv.verification.model.Inconclusive
 import com.ing.offlineidv.verification.model.Initializing
 import com.ing.offlineidv.verification.model.MakingDecision
+import com.ing.offlineidv.verification.model.NfcReadPhase
 import com.ing.offlineidv.verification.model.PreparingCamera
 import com.ing.offlineidv.verification.model.ReadingNfc
 import com.ing.offlineidv.verification.model.RecoveryRequired
@@ -86,19 +89,32 @@ public object VerificationUiStateMapper {
                 AtlasUiState.Nfc(
                     progress = progress(Stage.CHIP),
                     evidence = evidenceItems(state.progress.evidence, EvidenceScope.MRZ),
+                    scanStatus = AtlasNfcScanStatus.READY_TO_SCAN,
                 )
             }
 
             is ReadingNfc -> {
-                processing("Reading document chip", "Reading the document chip on this device.", Stage.CHIP)
+                AtlasUiState.Nfc(
+                    progress = progress(Stage.CHIP),
+                    evidence = evidenceItems(state.progress.evidence, EvidenceScope.MRZ),
+                    scanStatus = state.phase.toPresentationStatus(),
+                )
             }
 
             is ValidatingChipData -> {
-                processing("Checking chip signals", "Reviewing available chip evidence.", Stage.CHIP)
+                AtlasUiState.Nfc(
+                    progress = progress(Stage.CHIP),
+                    evidence = evidenceItems(state.progress.evidence, EvidenceScope.COMPLETED),
+                    scanStatus = AtlasNfcScanStatus.SCAN_COMPLETE,
+                )
             }
 
             is ComparingPrintedAndChipData -> {
-                processing("Comparing document signals", "Comparing printed and chip observations.", Stage.CHIP)
+                AtlasUiState.Nfc(
+                    progress = progress(Stage.CHIP),
+                    evidence = evidenceItems(state.progress.evidence, EvidenceScope.COMPLETED),
+                    scanStatus = AtlasNfcScanStatus.SCAN_COMPLETE,
+                )
             }
 
             is AwaitingSelfie -> {
@@ -147,20 +163,83 @@ public object VerificationUiStateMapper {
                 RetryableStep.NFC -> Stage.CHIP
                 RetryableStep.SELFIE -> Stage.FACE
             }
-        val title =
+        val defaultTitle =
             when (state.failedStep) {
                 RetryableStep.DOCUMENT_CAPTURE -> "Document capture needs attention"
                 RetryableStep.OCR -> "Document text needs attention"
                 RetryableStep.NFC -> "Chip read needs attention"
                 RetryableStep.SELFIE -> "Selfie needs attention"
             }
+        val nfcRecovery = if (state.failedStep == RetryableStep.NFC) nfcRecovery(state) else null
         return AtlasUiState.Recovery(
-            title = title,
-            detail = "The step did not complete. You can use the safe actions below.",
+            title = nfcRecovery?.title ?: defaultTitle,
+            detail = nfcRecovery?.detail ?: "The step did not complete. You can use the safe actions below.",
             canRetry = state.retryDecision == RetryDecision.RETRY_AVAILABLE,
             progress = progress(stage, needsAttention = true),
+            nfcScanStatus = nfcRecovery?.status,
         )
     }
+
+    private fun nfcRecovery(state: RecoveryRequired): NfcRecoveryPresentation {
+        val reason = state.error?.reason
+        return when (reason) {
+            NfcFailure.TAG_LOST -> {
+                NfcRecoveryPresentation(
+                    AtlasNfcScanStatus.CONNECTION_LOST,
+                    "Connection lost",
+                    "Hold the document against the phone again and keep it still, then retry.",
+                )
+            }
+
+            NfcFailure.ACCESS_DENIED -> {
+                NfcRecoveryPresentation(
+                    AtlasNfcScanStatus.AUTHENTICATION_FAILED,
+                    "Chip authentication failed",
+                    "The document chip did not accept the MRZ-derived access key. Check the document and retry.",
+                )
+            }
+
+            NfcFailure.UNSUPPORTED_TAG,
+            NfcFailure.ISO_DEP_UNAVAILABLE,
+            NfcFailure.PROTOCOL_UNSUPPORTED,
+            NfcFailure.ACCESS_CONTROL_UNSUPPORTED,
+            -> {
+                NfcRecoveryPresentation(
+                    AtlasNfcScanStatus.UNSUPPORTED_CHIP,
+                    "Unsupported document chip",
+                    "This chip or its protected access method is not supported by this build.",
+                )
+            }
+
+            NfcFailure.CONNECTION_TIMEOUT,
+            NfcFailure.COMMUNICATION_TIMEOUT,
+            NfcFailure.TIMEOUT,
+            VerificationFailure.STEP_TIMEOUT,
+            -> {
+                NfcRecoveryPresentation(
+                    AtlasNfcScanStatus.TIMED_OUT,
+                    "Chip scan timed out",
+                    "Hold the document firmly against the phone and try again.",
+                )
+            }
+
+            else -> {
+                NfcRecoveryPresentation(
+                    AtlasNfcScanStatus.SCAN_FAILED,
+                    "Chip scan failed",
+                    "The chip scan could not complete. Reposition the document and try again.",
+                )
+            }
+        }
+    }
+
+    private fun NfcReadPhase.toPresentationStatus(): AtlasNfcScanStatus =
+        when (this) {
+            NfcReadPhase.READY_TO_SCAN -> AtlasNfcScanStatus.READY_TO_SCAN
+            NfcReadPhase.CHIP_DETECTED -> AtlasNfcScanStatus.CHIP_DETECTED
+            NfcReadPhase.CONNECTING -> AtlasNfcScanStatus.CONNECTING
+            NfcReadPhase.SCAN_IN_PROGRESS -> AtlasNfcScanStatus.SCAN_IN_PROGRESS
+        }
 
     private fun result(state: TerminalState): AtlasUiState.Result {
         val (title, detail) = outcomeCopy(state.summary.outcome)
@@ -382,4 +461,10 @@ public object VerificationUiStateMapper {
                 -> true
             }
     }
+
+    private data class NfcRecoveryPresentation(
+        val status: AtlasNfcScanStatus,
+        val title: String,
+        val detail: String,
+    )
 }

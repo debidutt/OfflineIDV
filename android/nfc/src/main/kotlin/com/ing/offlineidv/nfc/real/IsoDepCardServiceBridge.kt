@@ -7,15 +7,16 @@ import net.sf.scuba.smartcards.CardServiceException
 import net.sf.scuba.smartcards.CommandAPDU
 import net.sf.scuba.smartcards.ResponseAPDU
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /** Minimal Scuba transport bridge; it retains no APDU transcript and registers no listeners. */
 internal class IsoDepCardServiceBridge(
     private val isoDep: IsoDep,
     private val timeoutMillis: Int,
 ) : CardService() {
-    @Volatile private var closed: Boolean = false
-
-    @Volatile private var failure: TransportFailure? = null
+    private val closeRequested = AtomicBoolean(false)
+    private val failure = AtomicReference<TransportFailure?>(null)
 
     init {
         require(timeoutMillis > 0) { "timeoutMillis must be positive" }
@@ -24,43 +25,47 @@ internal class IsoDepCardServiceBridge(
     @Synchronized
     override fun open() {
         if (isOpen()) return
-        if (closed) throw CardServiceException(TRANSPORT_UNAVAILABLE)
+        if (closeRequested.get()) throw CardServiceException(TRANSPORT_UNAVAILABLE)
         try {
             isoDep.timeout = timeoutMillis
             isoDep.connect()
             if (!isoDep.isConnected) {
-                failure = TransportFailure.CONNECTION_TIMEOUT
+                failure.compareAndSet(null, TransportFailure.CONNECTION_TIMEOUT)
+                throw CardServiceException(TRANSPORT_UNAVAILABLE)
+            }
+            if (closeRequested.get()) {
+                failure.compareAndSet(null, TransportFailure.TAG_LOST)
+                isoDep.close()
                 throw CardServiceException(TRANSPORT_UNAVAILABLE)
             }
             state = SESSION_STARTED_STATE
         } catch (_: TagLostException) {
-            failure = TransportFailure.TAG_LOST
+            failure.compareAndSet(null, TransportFailure.TAG_LOST)
             throw CardServiceException(TRANSPORT_UNAVAILABLE)
         } catch (_: IOException) {
-            failure = TransportFailure.READ_FAILED
+            failure.compareAndSet(null, transportFailureAfterIo())
             throw CardServiceException(TRANSPORT_UNAVAILABLE)
         } catch (_: RuntimeException) {
-            failure = TransportFailure.TECHNICAL_ERROR
+            failure.compareAndSet(null, TransportFailure.TECHNICAL_ERROR)
             throw CardServiceException(TRANSPORT_UNAVAILABLE)
         }
     }
 
-    override fun isOpen(): Boolean = !closed && state == SESSION_STARTED_STATE && isoDep.isConnected
+    override fun isOpen(): Boolean = !closeRequested.get() && state == SESSION_STARTED_STATE && isoDep.isConnected
 
-    @Synchronized
     override fun transmit(commandAPDU: CommandAPDU): ResponseAPDU {
         if (!isOpen()) throw CardServiceException(TRANSPORT_UNAVAILABLE)
         val command = commandAPDU.bytes
         return try {
             val maximum = minOf(isoDep.maxTransceiveLength, MAXIMUM_TRANSCEIVE_BYTES)
             if (command.size !in MINIMUM_COMMAND_BYTES..maximum) {
-                failure = TransportFailure.LIMIT_EXCEEDED
+                failure.compareAndSet(null, TransportFailure.LIMIT_EXCEEDED)
                 throw CardServiceException(TRANSPORT_COMMAND_REJECTED)
             }
             val response = isoDep.transceive(command)
             try {
                 if (response.size !in MINIMUM_RESPONSE_BYTES..maximum) {
-                    failure = TransportFailure.LIMIT_EXCEEDED
+                    failure.compareAndSet(null, TransportFailure.LIMIT_EXCEEDED)
                     throw CardServiceException(TRANSPORT_RESPONSE_REJECTED)
                 }
                 ResponseAPDU(response.copyOf())
@@ -68,15 +73,15 @@ internal class IsoDepCardServiceBridge(
                 response.fill(0)
             }
         } catch (_: TagLostException) {
-            failure = TransportFailure.TAG_LOST
+            failure.compareAndSet(null, TransportFailure.TAG_LOST)
             throw CardServiceException(TRANSPORT_UNAVAILABLE)
         } catch (error: CardServiceException) {
             throw error
         } catch (_: IOException) {
-            failure = TransportFailure.READ_FAILED
+            failure.compareAndSet(null, transportFailureAfterIo())
             throw CardServiceException(TRANSPORT_UNAVAILABLE)
         } catch (_: RuntimeException) {
-            failure = TransportFailure.TECHNICAL_ERROR
+            failure.compareAndSet(null, TransportFailure.TECHNICAL_ERROR)
             throw CardServiceException(TRANSPORT_UNAVAILABLE)
         } finally {
             command.fill(0)
@@ -85,14 +90,14 @@ internal class IsoDepCardServiceBridge(
 
     override fun getATR(): ByteArray = byteArrayOf()
 
-    override fun isConnectionLost(exception: Exception): Boolean = exception is TagLostException || failure == TransportFailure.TAG_LOST
+    override fun isConnectionLost(exception: Exception): Boolean =
+        exception is TagLostException || failure.get() == TransportFailure.TAG_LOST
 
     override fun isExtendedAPDULengthSupported(): Boolean = false
 
-    @Synchronized
     override fun close() {
-        if (closed) return
-        closed = true
+        if (!closeRequested.compareAndSet(false, true)) return
+        failure.compareAndSet(null, TransportFailure.TAG_LOST)
         state = SESSION_STOPPED_STATE
         try {
             isoDep.close()
@@ -103,7 +108,14 @@ internal class IsoDepCardServiceBridge(
         }
     }
 
-    fun consumeFailure(): TransportFailure? = failure.also { failure = null }
+    fun consumeFailure(): TransportFailure? = failure.getAndSet(null)
+
+    private fun transportFailureAfterIo(): TransportFailure =
+        if (closeRequested.get() || !isoDep.isConnected) {
+            TransportFailure.TAG_LOST
+        } else {
+            TransportFailure.READ_FAILED
+        }
 
     internal enum class TransportFailure {
         CONNECTION_TIMEOUT,

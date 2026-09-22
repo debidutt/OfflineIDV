@@ -8,6 +8,7 @@ import com.ing.offlineidv.verification.fixtures.completeHappyPath
 import com.ing.offlineidv.verification.fixtures.startAndInitialize
 import com.ing.offlineidv.verification.model.ActiveVerificationState
 import com.ing.offlineidv.verification.model.FaceComparisonStatus
+import com.ing.offlineidv.verification.model.NfcReadPhase
 import com.ing.offlineidv.verification.model.PrintedChipComparisonStatus
 import com.ing.offlineidv.verification.model.TerminalState
 import com.ing.offlineidv.verification.model.TransitionDisposition
@@ -207,6 +208,7 @@ public class VerificationMatrixTest {
             VerificationEvent.MrzValidationFailed(operation, VerificationFixtures.safeTechnicalError),
             VerificationEvent.NfcRequested,
             VerificationEvent.NfcStarted(operation),
+            VerificationEvent.NfcProgressed(operation, NfcReadPhase.CHIP_DETECTED),
             VerificationEvent.NfcReadSucceeded(operation, VerificationFixtures.chipReference),
             VerificationEvent.NfcReadFailed(operation, VerificationFixtures.safeTechnicalError),
             VerificationEvent.ChipValidationCompleted(operation, VerificationFixtures.validChipSummary),

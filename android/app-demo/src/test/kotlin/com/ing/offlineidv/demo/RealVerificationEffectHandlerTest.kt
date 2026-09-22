@@ -14,7 +14,10 @@ import com.ing.offlineidv.core.error.NfcFailure
 import com.ing.offlineidv.core.error.OcrFailure
 import com.ing.offlineidv.core.result.IdvResult
 import com.ing.offlineidv.core.session.IdvSessionId
+import com.ing.offlineidv.nfc.AsyncPassportNfcEngine
 import com.ing.offlineidv.nfc.ChipDataArtifact
+import com.ing.offlineidv.nfc.NfcReadProgress
+import com.ing.offlineidv.nfc.NfcReadProgressObserver
 import com.ing.offlineidv.nfc.NfcReadRequest
 import com.ing.offlineidv.nfc.NfcReadResult
 import com.ing.offlineidv.nfc.PassportChipValidationEngine
@@ -29,6 +32,8 @@ import com.ing.offlineidv.verification.model.Cancelled
 import com.ing.offlineidv.verification.model.CapturingDocument
 import com.ing.offlineidv.verification.model.EvaluatingDocumentQuality
 import com.ing.offlineidv.verification.model.Inconclusive
+import com.ing.offlineidv.verification.model.NfcReadPhase
+import com.ing.offlineidv.verification.model.ReadingNfc
 import com.ing.offlineidv.verification.model.RecoveryRequired
 import com.ing.offlineidv.verification.model.Rejected
 import com.ing.offlineidv.verification.model.RetryableStep
@@ -191,6 +196,19 @@ public class RealVerificationEffectHandlerTest {
     }
 
     @Test
+    public fun `real NFC progress enters UI state only through reducer events`() {
+        val harness = Harness(includeNfc = true)
+        harness.startNfcRead()
+
+        harness.nfcProgressObservers.single().onProgress(NfcReadProgress.TAG_DETECTED)
+        assertEquals(NfcReadPhase.CHIP_DETECTED, (harness.orchestrator.state as ReadingNfc).phase)
+        harness.nfcProgressObservers.single().onProgress(NfcReadProgress.CONNECTING)
+        assertEquals(NfcReadPhase.CONNECTING, (harness.orchestrator.state as ReadingNfc).phase)
+        harness.nfcProgressObservers.single().onProgress(NfcReadProgress.READING)
+        assertEquals(NfcReadPhase.SCAN_IN_PROGRESS, (harness.orchestrator.state as ReadingNfc).phase)
+    }
+
+    @Test
     public fun `NFC capability failure becomes reducer owned recovery`() {
         val harness = Harness(includeNfc = true)
         harness.startNfcRead()
@@ -274,6 +292,7 @@ public class RealVerificationEffectHandlerTest {
         val qualityCallbacks = mutableListOf<(DocumentQualityResult) -> Unit>()
         val ocrCallbacks = mutableListOf<(OcrEngineResult) -> Unit>()
         val nfcRequests = mutableListOf<NfcReadRequest>()
+        val nfcProgressObservers = mutableListOf<NfcReadProgressObserver>()
         val nfcCallbacks = mutableListOf<(NfcReadResult) -> Unit>()
         var prepareCalls: Int = 0
         private val permissionGateway = CameraPermissionGateway()
@@ -314,11 +333,26 @@ public class RealVerificationEffectHandlerTest {
                     documentQualityEngine = quality,
                     ocrEngine = ocr,
                     mrzPipeline = RealMrzPipeline(artifactStore, LocalDate.of(2026, 8, 31)),
-                    nfcEngine = { request, callback ->
-                        nfcRequests += request
-                        nfcCallbacks += callback
-                        CancellableOperation.NONE
-                    },
+                    nfcEngine =
+                        object : AsyncPassportNfcEngine {
+                            override fun read(
+                                request: NfcReadRequest,
+                                callback: (NfcReadResult) -> Unit,
+                            ): CancellableOperation {
+                                nfcRequests += request
+                                nfcCallbacks += callback
+                                return CancellableOperation.NONE
+                            }
+
+                            override fun read(
+                                request: NfcReadRequest,
+                                progressObserver: NfcReadProgressObserver,
+                                callback: (NfcReadResult) -> Unit,
+                            ): CancellableOperation {
+                                nfcProgressObservers += progressObserver
+                                return read(request, callback)
+                            }
+                        },
                     chipValidationEngine = PassportChipValidationEngine,
                     printedChipComparisonEngine = Td3PrintedChipComparisonEngine,
                     artifactStore = artifactStore,

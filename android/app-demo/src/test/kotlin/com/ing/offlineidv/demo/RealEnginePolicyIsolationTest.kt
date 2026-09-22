@@ -38,6 +38,18 @@ public class RealEnginePolicyIsolationTest {
     }
 
     @Test
+    public fun `Demo runtime contains no physical NFC haptic adapter`() {
+        val demoSources =
+            sourceUnder("android/verification/src/main/kotlin/com/ing/offlineidv/verification/demo") +
+                sourceUnder("android/nfc/src/main/kotlin/com/ing/offlineidv/nfc/demo")
+
+        assertForbidden(
+            demoSources,
+            listOf("NfcTagHapticFeedback", "VibratorManager", "VibrationEffect", "android.os.Vibrator"),
+        )
+    }
+
+    @Test
     public fun `production sources contain no sensitive logging or public storage APIs`() {
         val sources = cameraSource() + ocrSource() + nfcProductionSource()
         listOf("Log.", "println(", "MediaStore", "Environment.getExternal", "getExternalFilesDir").forEach { token ->
@@ -81,6 +93,7 @@ public class RealEnginePolicyIsolationTest {
 
         assertTrue(manifest.contains("android.permission.CAMERA"))
         assertTrue(manifest.contains("android.permission.NFC"))
+        assertTrue(manifest.contains("android.permission.VIBRATE"))
         assertPermissionRemoved(manifest, "android.permission.INTERNET")
         assertPermissionRemoved(manifest, "android.permission.ACCESS_NETWORK_STATE")
     }

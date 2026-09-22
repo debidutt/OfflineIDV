@@ -46,6 +46,45 @@ public class NfcSessionCoordinatorTest {
     }
 
     @Test
+    public fun `physical tag reports detection connection and reading once in order`() {
+        val executor = QueuedExecutor()
+        val discovery = RecordingDiscovery()
+        val progress = mutableListOf<NfcReadProgress>()
+        val results = mutableListOf<NfcReadResult>()
+        val session =
+            object : PassportChipSession {
+                override fun read(accessKey: PassportAccessKey): NfcReadResult = error("progress overload expected")
+
+                override fun read(
+                    accessKey: PassportAccessKey,
+                    progressObserver: NfcReadProgressObserver,
+                ): NfcReadResult {
+                    progressObserver.onProgress(NfcReadProgress.READING)
+                    return NfcReadResult.Read(ChipDataArtifact("chip"))
+                }
+            }
+        coordinator(NfcCapability.AVAILABLE, discovery, executor).read(
+            request,
+            NfcReadProgressObserver(progress::add),
+            results::add,
+        )
+
+        discovery.callbacks.single()(NfcTagDiscoveryResult.Connected(session))
+        assertEquals(listOf(NfcReadProgress.TAG_DETECTED), progress)
+        executor.runAll()
+
+        assertEquals(
+            listOf(
+                NfcReadProgress.TAG_DETECTED,
+                NfcReadProgress.CONNECTING,
+                NfcReadProgress.READING,
+            ),
+            progress,
+        )
+        assertTrue(results.single() is NfcReadResult.Read)
+    }
+
+    @Test
     public fun `unsupported tag maps to a predefined safe failure`() {
         val discovery = RecordingDiscovery()
         val results = mutableListOf<NfcReadResult>()

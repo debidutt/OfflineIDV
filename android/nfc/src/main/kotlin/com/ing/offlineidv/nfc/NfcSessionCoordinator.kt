@@ -11,6 +11,12 @@ public fun interface PassportChipSession : AutoCloseable {
     /** Performs a reviewed protocol read or returns a safe feature observation. */
     public fun read(accessKey: PassportAccessKey): NfcReadResult
 
+    /** Performs a read while optionally reporting payload-free transport progress. */
+    public fun read(
+        accessKey: PassportAccessKey,
+        progressObserver: NfcReadProgressObserver,
+    ): NfcReadResult = read(accessKey)
+
     override fun close() {
         // Functional implementations that own no transport need no cleanup.
     }
@@ -54,6 +60,12 @@ public class NfcSessionCoordinator(
     override fun read(
         request: NfcReadRequest,
         callback: (NfcReadResult) -> Unit,
+    ): CancellableOperation = read(request, NfcReadProgressObserver.NONE, callback)
+
+    override fun read(
+        request: NfcReadRequest,
+        progressObserver: NfcReadProgressObserver,
+        callback: (NfcReadResult) -> Unit,
     ): CancellableOperation {
         val capability = safeCapability()
         when (capability) {
@@ -72,7 +84,7 @@ public class NfcSessionCoordinator(
             }
         }
 
-        val operation = ActiveRead(request, callback)
+        val operation = ActiveRead(request, progressObserver, callback)
         synchronized(this) {
             if (closed) {
                 callback(NfcReadResult.Failed(IdvError.Nfc(NfcFailure.TECHNICAL_ERROR)))
@@ -115,11 +127,13 @@ public class NfcSessionCoordinator(
 
             is NfcTagDiscoveryResult.Connected -> {
                 operation.attachSession(result.session)
+                operation.report(NfcReadProgress.TAG_DETECTED)
                 try {
                     executor.execute {
+                        operation.report(NfcReadProgress.CONNECTING)
                         val readResult =
                             try {
-                                result.session.read(operation.request.accessKey)
+                                result.session.read(operation.request.accessKey, operation::report)
                             } catch (_: RuntimeException) {
                                 NfcReadResult.Failed(IdvError.Nfc(NfcFailure.TECHNICAL_ERROR))
                             } finally {
@@ -180,6 +194,7 @@ public class NfcSessionCoordinator(
 
     private class ActiveRead(
         val request: NfcReadRequest,
+        private val progressObserver: NfcReadProgressObserver,
         val callback: (NfcReadResult) -> Unit,
     ) {
         val cancelled = AtomicBoolean(false)
@@ -204,6 +219,12 @@ public class NfcSessionCoordinator(
         }
 
         fun claimTag(): Boolean = tagClaimed.compareAndSet(false, true)
+
+        fun report(progress: NfcReadProgress) {
+            if (!cancelled.get()) {
+                runCatching { progressObserver.onProgress(progress) }
+            }
+        }
 
         fun cancel() {
             if (cancelled.compareAndSet(false, true)) {

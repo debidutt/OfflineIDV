@@ -31,6 +31,8 @@ import com.ing.offlineidv.nfc.ChipValidationEngine
 import com.ing.offlineidv.nfc.ChipValidationResult
 import com.ing.offlineidv.nfc.MrzPrintedChipComparisonEngine
 import com.ing.offlineidv.nfc.NfcCapability
+import com.ing.offlineidv.nfc.NfcReadProgress
+import com.ing.offlineidv.nfc.NfcReadProgressObserver
 import com.ing.offlineidv.nfc.NfcReadRequest
 import com.ing.offlineidv.nfc.NfcReadResult
 import com.ing.offlineidv.nfc.NfcSessionCoordinator
@@ -51,6 +53,7 @@ import com.ing.offlineidv.ocr.real.MlKitOcrEngine
 import com.ing.offlineidv.verification.artifact.SessionArtifactStore
 import com.ing.offlineidv.verification.model.ChipAuthenticationStatus
 import com.ing.offlineidv.verification.model.ChipValidationSummary
+import com.ing.offlineidv.verification.model.NfcReadPhase
 import com.ing.offlineidv.verification.model.PassiveAuthenticationStatus
 import com.ing.offlineidv.verification.model.PrintedChipComparisonStatus
 import com.ing.offlineidv.verification.model.VerificationArtifactKind
@@ -432,6 +435,15 @@ internal class RealVerificationEffectHandler(
         start(effect.operation, sink) { complete ->
             nfcEngine.read(
                 NfcReadRequest(effect.operation.sessionId, (accessKey as IdvResult.Success).value),
+                NfcReadProgressObserver { progress ->
+                    emit(
+                        sink,
+                        VerificationEvent.NfcProgressed(
+                            effect.operation,
+                            progress.toVerificationPhase(),
+                        ),
+                    )
+                },
             ) { result ->
                 when (result) {
                     is NfcReadResult.Read -> {
@@ -661,6 +673,13 @@ internal class RealVerificationEffectHandler(
             ChipAuthenticationObservation.SECURE_MESSAGING_FAILED -> ChipAuthenticationStatus.SECURE_MESSAGING_FAILED
             ChipAuthenticationObservation.TECHNICAL_ERROR -> ChipAuthenticationStatus.TECHNICAL_ERROR
         }
+
+    private fun NfcReadProgress.toVerificationPhase(): NfcReadPhase =
+        when (this) {
+            NfcReadProgress.TAG_DETECTED -> NfcReadPhase.CHIP_DETECTED
+            NfcReadProgress.CONNECTING -> NfcReadPhase.CONNECTING
+            NfcReadProgress.READING -> NfcReadPhase.SCAN_IN_PROGRESS
+        }
 }
 
 /** Fully injected single-session real Android runtime. */
@@ -754,7 +773,15 @@ internal object RealAndroidVerificationFactory {
             }
         val ocr = MlKitOcrEngine(imageSource)
         val nfcCapabilityDetector = AndroidNfcCapabilityDetector(context)
-        val nfcTagDiscovery = AndroidNfcTagDiscovery(context, nfcCapabilityDetector)
+        val nfcTagDiscovery =
+            AndroidNfcTagDiscovery(
+                context = context,
+                capabilityDetector = nfcCapabilityDetector,
+                diagnosticSink =
+                    NfcDebugDiagnosticSink(
+                        enabled = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
+                    ),
+            )
         val nfc = NfcSessionCoordinator(nfcCapabilityDetector, nfcTagDiscovery, background)
         val handlerThread = Handler(Looper.getMainLooper())
         val scheduler = MainThreadVerificationScheduler(handlerThread)

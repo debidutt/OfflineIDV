@@ -119,6 +119,11 @@ public sealed interface VerificationEvent {
         public val operation: VerificationOperationToken,
     ) : VerificationEvent
 
+    public data class NfcProgressed(
+        public val operation: VerificationOperationToken,
+        public val phase: NfcReadPhase,
+    ) : VerificationEvent
+
     public data class NfcReadSucceeded(
         public val operation: VerificationOperationToken,
         public val chipReference: VerificationArtifactReference,

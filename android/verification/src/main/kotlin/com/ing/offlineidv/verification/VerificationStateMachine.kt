@@ -24,6 +24,7 @@ import com.ing.offlineidv.verification.model.Idle
 import com.ing.offlineidv.verification.model.Inconclusive
 import com.ing.offlineidv.verification.model.Initializing
 import com.ing.offlineidv.verification.model.MakingDecision
+import com.ing.offlineidv.verification.model.NfcReadPhase
 import com.ing.offlineidv.verification.model.PassiveAuthenticationStatus
 import com.ing.offlineidv.verification.model.PreparingCamera
 import com.ing.offlineidv.verification.model.PrintedChipComparisonStatus
@@ -560,6 +561,14 @@ public object DefaultVerificationStateMachine : VerificationStateMachine {
         when (event) {
             is VerificationEvent.NfcStarted -> {
                 ignored(state, TransitionDisposition.IGNORED_DUPLICATE_EVENT)
+            }
+
+            is VerificationEvent.NfcProgressed -> {
+                if (event.phase.ordinal > state.phase.ordinal) {
+                    TransitionResult(state.copy(phase = event.phase))
+                } else {
+                    ignored(state, TransitionDisposition.IGNORED_DUPLICATE_EVENT)
+                }
             }
 
             is VerificationEvent.NfcReadSucceeded -> {
@@ -1354,6 +1363,8 @@ public object DefaultVerificationStateMachine : VerificationStateMachine {
             is VerificationEvent.MrzValidationFailed -> event.operation
 
             is VerificationEvent.NfcStarted -> event.operation
+
+            is VerificationEvent.NfcProgressed -> event.operation
 
             is VerificationEvent.NfcReadSucceeded -> event.operation
 
