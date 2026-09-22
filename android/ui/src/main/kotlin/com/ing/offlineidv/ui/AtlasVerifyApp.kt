@@ -663,7 +663,7 @@ private fun NfcScreen(
     nfcAvailability: AtlasNfcAvailability,
     onAction: (AtlasUiAction) -> Unit,
 ) {
-    val statusCopy = state.scanStatus.presentationCopy()
+    val statusCopy = state.scanStatus.presentationCopy(state.canStartScan)
     ScreenColumn {
         ScreenTitle(
             if (runtimeMode == AtlasRuntimeMode.DEMO) "Passport data extracted" else statusCopy.first,
@@ -730,7 +730,7 @@ private fun NfcScreen(
                 modifier = Modifier.semantics { testTag = AtlasTestTags.NFC_STATUS },
             )
         }
-        if (runtimeMode == AtlasRuntimeMode.DEMO || state.scanStatus == AtlasNfcScanStatus.READY_TO_SCAN) {
+        if (runtimeMode == AtlasRuntimeMode.DEMO || state.canStartScan) {
             Button(
                 onClick = { onAction(AtlasUiAction.StartNfc) },
                 modifier = Modifier.fillMaxWidth().height(56.dp).semantics { testTag = AtlasTestTags.NFC },
@@ -742,10 +742,14 @@ private fun NfcScreen(
     }
 }
 
-private fun AtlasNfcScanStatus.presentationCopy(): Pair<String, String> =
+private fun AtlasNfcScanStatus.presentationCopy(canStartScan: Boolean): Pair<String, String> =
     when (this) {
         AtlasNfcScanStatus.READY_TO_SCAN -> {
-            "Ready to scan" to "Hold the top or back of your phone against the contactless document."
+            if (canStartScan) {
+                "Ready to scan" to "Hold the top or back of your phone against the contactless document."
+            } else {
+                "Ready to scan" to "NFC reader active. Hold the document against the phone now."
+            }
         }
 
         AtlasNfcScanStatus.CHIP_DETECTED -> {

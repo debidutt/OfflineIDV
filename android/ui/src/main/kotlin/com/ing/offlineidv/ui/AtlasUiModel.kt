@@ -31,6 +31,7 @@ public sealed interface AtlasUiState {
         public val progress: AtlasProgress,
         public val evidence: List<AtlasEvidenceItem>,
         public val scanStatus: AtlasNfcScanStatus = AtlasNfcScanStatus.READY_TO_SCAN,
+        public val canStartScan: Boolean = scanStatus == AtlasNfcScanStatus.READY_TO_SCAN,
     ) : AtlasUiState
 
     public data class Selfie(

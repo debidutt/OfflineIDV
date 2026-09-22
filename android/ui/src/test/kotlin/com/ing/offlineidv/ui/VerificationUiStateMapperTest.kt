@@ -67,6 +67,7 @@ public class VerificationUiStateMapperTest {
     public fun `awaiting nfc maps safe mrz evidence only`() {
         val mapped = mapSuccessState<AwaitingNfc>() as AtlasUiState.Nfc
 
+        assertTrue(mapped.canStartScan)
         assertTrue(mapped.evidence.any { it.title == "MRZ structure" })
         assertFalse(mapped.toString().contains("passportNumber", ignoreCase = true))
     }
@@ -82,6 +83,8 @@ public class VerificationUiStateMapperTest {
     @Test
     public fun `reading phases map to distinct reactive NFC presentation states`() {
         val reading = successStates().filterIsInstance<ReadingNfc>().first()
+
+        assertFalse((VerificationUiStateMapper.map(reading) as AtlasUiState.Nfc).canStartScan)
 
         assertEquals(
             AtlasNfcScanStatus.CHIP_DETECTED,

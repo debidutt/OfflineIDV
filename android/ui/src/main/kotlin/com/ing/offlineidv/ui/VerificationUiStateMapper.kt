@@ -90,6 +90,7 @@ public object VerificationUiStateMapper {
                     progress = progress(Stage.CHIP),
                     evidence = evidenceItems(state.progress.evidence, EvidenceScope.MRZ),
                     scanStatus = AtlasNfcScanStatus.READY_TO_SCAN,
+                    canStartScan = true,
                 )
             }
 
@@ -98,6 +99,7 @@ public object VerificationUiStateMapper {
                     progress = progress(Stage.CHIP),
                     evidence = evidenceItems(state.progress.evidence, EvidenceScope.MRZ),
                     scanStatus = state.phase.toPresentationStatus(),
+                    canStartScan = false,
                 )
             }
 
@@ -106,6 +108,7 @@ public object VerificationUiStateMapper {
                     progress = progress(Stage.CHIP),
                     evidence = evidenceItems(state.progress.evidence, EvidenceScope.COMPLETED),
                     scanStatus = AtlasNfcScanStatus.SCAN_COMPLETE,
+                    canStartScan = false,
                 )
             }
 
@@ -114,6 +117,7 @@ public object VerificationUiStateMapper {
                     progress = progress(Stage.CHIP),
                     evidence = evidenceItems(state.progress.evidence, EvidenceScope.COMPLETED),
                     scanStatus = AtlasNfcScanStatus.SCAN_COMPLETE,
+                    canStartScan = false,
                 )
             }
 

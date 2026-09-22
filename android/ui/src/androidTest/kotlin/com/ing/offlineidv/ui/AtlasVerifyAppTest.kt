@@ -223,6 +223,28 @@ public class AtlasVerifyAppTest {
     }
 
     @Test
+    public fun realNfcStartDispatchesAndActiveDiscoveryHidesStartButton() {
+        val actions = mutableListOf<AtlasUiAction>()
+        val state = mutableStateOf(AtlasUiState.Nfc(progress(2), emptyList()))
+        composeRule.setContent {
+            AtlasVerifyApp(
+                state = state.value,
+                runtimeMode = AtlasRuntimeMode.REAL_ANDROID,
+                nfcAvailability = AtlasNfcAvailability.AVAILABLE,
+                onAction = actions::add,
+            )
+        }
+
+        composeRule.onNodeWithText("Start chip scan").performClick()
+        assertEquals(listOf(AtlasUiAction.StartNfc), actions)
+
+        state.value = state.value.copy(canStartScan = false)
+        composeRule.onNodeWithText("Ready to scan").assertExists()
+        composeRule.onNodeWithText("NFC reader active. Hold the document against the phone now.").assertExists()
+        composeRule.onNodeWithText("Start chip scan").assertDoesNotExist()
+    }
+
+    @Test
     public fun selfieScreenRejectsLivenessClaim() {
         show(AtlasUiState.Selfie(progress(3), emptyList()))
 
