@@ -3,6 +3,7 @@ package com.ing.offlineidv.ui
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -235,12 +236,14 @@ public class AtlasVerifyAppTest {
             )
         }
 
-        composeRule.onNodeWithText("Start chip scan").performClick()
+        composeRule.onNodeWithText("Start chip scan").performScrollTo().performClick()
         assertEquals(listOf(AtlasUiAction.StartNfc), actions)
 
         state.value = state.value.copy(canStartScan = false)
         composeRule.onNodeWithText("Ready to scan").assertExists()
-        composeRule.onNodeWithText("NFC reader active. Hold the document against the phone now.").assertExists()
+        composeRule
+            .onNodeWithText("NFC reader active. Hold the document against the phone now.")
+            .assertIsDisplayed()
         composeRule.onNodeWithText("Start chip scan").assertDoesNotExist()
     }
 

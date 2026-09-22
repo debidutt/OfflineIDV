@@ -666,11 +666,11 @@ private fun NfcScreen(
     val statusCopy = state.scanStatus.presentationCopy(state.canStartScan)
     ScreenColumn {
         ScreenTitle(
-            if (runtimeMode == AtlasRuntimeMode.DEMO) "Passport data extracted" else statusCopy.first,
+            if (runtimeMode == AtlasRuntimeMode.DEMO) "Passport data extracted" else "Read document chip",
             if (runtimeMode == AtlasRuntimeMode.DEMO) {
                 "Review the safe MRZ signals, then continue to the chip step."
             } else {
-                statusCopy.second
+                "Follow the live NFC status below and keep the document close to your phone."
             },
             announce = true,
         )
@@ -706,29 +706,38 @@ private fun NfcScreen(
                 }
             }
         }
-        if (
-            runtimeMode == AtlasRuntimeMode.REAL_ANDROID &&
-            state.scanStatus in setOf(AtlasNfcScanStatus.CONNECTING, AtlasNfcScanStatus.SCAN_IN_PROGRESS)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().semantics { testTag = AtlasTestTags.NFC_STATUS },
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+        if (runtimeMode == AtlasRuntimeMode.REAL_ANDROID) {
+            Column(
+                modifier =
+                    Modifier.fillMaxWidth().semantics {
+                        testTag = AtlasTestTags.NFC_STATUS
+                        liveRegion = LiveRegionMode.Polite
+                    },
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                CircularProgressIndicator(
-                    modifier =
-                        Modifier.size(32.dp).semantics {
-                            progressBarRangeInfo = androidx.compose.ui.semantics.ProgressBarRangeInfo.Indeterminate
-                        },
+                if (state.scanStatus in setOf(AtlasNfcScanStatus.CONNECTING, AtlasNfcScanStatus.SCAN_IN_PROGRESS)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(
+                            modifier =
+                                Modifier.size(32.dp).semantics {
+                                    progressBarRangeInfo =
+                                        androidx.compose.ui.semantics.ProgressBarRangeInfo.Indeterminate
+                                },
+                        )
+                        Text(statusCopy.first, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Text(statusCopy.first, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    statusCopy.second,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(statusCopy.first, fontWeight = FontWeight.Bold)
             }
-        } else if (runtimeMode == AtlasRuntimeMode.REAL_ANDROID) {
-            Text(
-                statusCopy.first,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.semantics { testTag = AtlasTestTags.NFC_STATUS },
-            )
         }
         if (runtimeMode == AtlasRuntimeMode.DEMO || state.canStartScan) {
             Button(
