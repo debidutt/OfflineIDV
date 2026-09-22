@@ -331,7 +331,7 @@ internal class JmrtdPassportProtocolReader(
 
     private fun PACEInfo.descriptorOrNull(): PaceSuiteDescriptor? =
         try {
-            val parameter = requireNotNull(parameterId).intValueExact()
+            val parameter = requireNotNull(parameterId).toInt()
             PaceSuiteDescriptor(objectIdentifier, parameter)
         } catch (_: Exception) {
             null

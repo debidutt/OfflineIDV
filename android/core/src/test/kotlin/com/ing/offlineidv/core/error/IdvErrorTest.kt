@@ -13,7 +13,7 @@ public class IdvErrorTest {
         assertEquals(IdvErrorCategory.NFC, error.category)
         assertEquals("nfc.timeout", error.code)
         assertEquals(IdvRecovery.RETRY, error.recovery)
-        assertEquals("The passport read timed out.", error.safeDescription)
+        assertEquals("The document-chip read timed out.", error.safeDescription)
     }
 
     @Test

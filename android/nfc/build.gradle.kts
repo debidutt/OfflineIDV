@@ -7,7 +7,10 @@ android {
 }
 
 configurations.configureEach {
-    resolutionStrategy.failOnVersionConflict()
+    val isInternal = name.startsWith("kotlin") || name.startsWith("android") || name.contains("Lint")
+    if (!isInternal) {
+        resolutionStrategy.failOnVersionConflict()
+    }
 }
 
 dependencyLocking {

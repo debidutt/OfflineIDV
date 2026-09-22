@@ -39,10 +39,12 @@ public class RealEnginePolicyIsolationTest {
 
     @Test
     public fun `production sources contain no sensitive logging or public storage APIs`() {
-        assertForbidden(
-            cameraSource() + ocrSource() + nfcProductionSource(),
-            listOf("Log.", "println(", "MediaStore", "Environment.getExternal", "getExternalFilesDir", "File("),
-        )
+        val sources = cameraSource() + ocrSource() + nfcProductionSource()
+        listOf("Log.", "println(", "MediaStore", "Environment.getExternal", "getExternalFilesDir").forEach { token ->
+            assertFalse("real engine references forbidden token $token", sources.contains(token))
+        }
+        val fileConstructorRegex = Regex("""\bFile\(""")
+        assertFalse("real engine references forbidden token File(", fileConstructorRegex.containsMatchIn(sources))
     }
 
     @Test

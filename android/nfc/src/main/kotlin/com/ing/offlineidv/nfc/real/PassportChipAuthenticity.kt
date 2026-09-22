@@ -1,5 +1,6 @@
 package com.ing.offlineidv.nfc.real
 
+import android.annotation.SuppressLint
 import com.ing.offlineidv.core.time.IdvClock
 import com.ing.offlineidv.core.time.SystemIdvClock
 import com.ing.offlineidv.nfc.ChipAuthenticationObservation
@@ -179,6 +180,7 @@ internal class PassportChipAuthenticity(
 internal object PassportSignaturePolicy {
     const val RSA_PSS_ALGORITHM: String = "SSAwithRSA/PSS"
 
+    @SuppressLint("InlinedApi")
     fun isReviewedParameters(
         signatureAlgorithm: String,
         signerDigestAlgorithm: String,
@@ -237,8 +239,8 @@ internal class DutchResidenceTrustStore {
         }
     }
 
-    private fun loadReviewedAnchor(): X509Certificate? =
-        try {
+    private fun loadReviewedAnchor(): X509Certificate? {
+        return try {
             val resource = requireNotNull(javaClass.getResourceAsStream(TRUST_RESOURCE))
             val certificate =
                 resource.use { input ->
@@ -252,6 +254,7 @@ internal class DutchResidenceTrustStore {
         } catch (_: Exception) {
             null
         }
+    }
 
     private fun isReviewedSigner(certificate: X509Certificate): Boolean {
         if (certificate.basicConstraints >= 0) return false
