@@ -55,7 +55,7 @@ public object VerificationUiStateMapper {
             }
 
             is PreparingCamera -> {
-                processing("Preparing document capture", "Position your passport inside the frame.", Stage.DOCUMENT)
+                processing("Preparing document capture", "Position your document inside the frame.", Stage.DOCUMENT)
             }
 
             is CameraReady -> {
@@ -63,7 +63,7 @@ public object VerificationUiStateMapper {
             }
 
             is CapturingDocument -> {
-                processing("Capturing passport", "Capturing the passport on this device.", Stage.DOCUMENT)
+                processing("Capturing document", "Capturing the document on this device.", Stage.DOCUMENT)
             }
 
             is EvaluatingDocumentQuality -> {
@@ -71,7 +71,7 @@ public object VerificationUiStateMapper {
             }
 
             is RunningOcr -> {
-                processing("Reading passport", "Processing passport text on this device.", Stage.MRZ)
+                processing("Reading document", "Processing document text on this device.", Stage.MRZ)
             }
 
             is ExtractingMrz -> {
@@ -90,7 +90,7 @@ public object VerificationUiStateMapper {
             }
 
             is ReadingNfc -> {
-                processing("Reading passport chip", "Reading the passport chip on this device.", Stage.CHIP)
+                processing("Reading document chip", "Reading the document chip on this device.", Stage.CHIP)
             }
 
             is ValidatingChipData -> {
@@ -98,7 +98,7 @@ public object VerificationUiStateMapper {
             }
 
             is ComparingPrintedAndChipData -> {
-                processing("Comparing passport signals", "Comparing printed and chip observations.", Stage.CHIP)
+                processing("Comparing document signals", "Comparing printed and chip observations.", Stage.CHIP)
             }
 
             is AwaitingSelfie -> {
@@ -149,8 +149,8 @@ public object VerificationUiStateMapper {
             }
         val title =
             when (state.failedStep) {
-                RetryableStep.DOCUMENT_CAPTURE -> "Passport capture needs attention"
-                RetryableStep.OCR -> "Passport text needs attention"
+                RetryableStep.DOCUMENT_CAPTURE -> "Document capture needs attention"
+                RetryableStep.OCR -> "Document text needs attention"
                 RetryableStep.NFC -> "Chip read needs attention"
                 RetryableStep.SELFIE -> "Selfie needs attention"
             }
@@ -230,7 +230,7 @@ public object VerificationUiStateMapper {
     private fun evidenceItem(evidence: VerificationEvidence): AtlasEvidenceItem =
         when (evidence) {
             VerificationEvidence.MRZ_STRUCTURE_VALID -> {
-                confirmed("MRZ structure", "Expected passport structure found.")
+                confirmed("MRZ structure", "Expected document structure found.")
             }
 
             VerificationEvidence.MRZ_STRUCTURE_INVALID -> {
@@ -262,11 +262,11 @@ public object VerificationUiStateMapper {
             }
 
             VerificationEvidence.NFC_CHIP_READ -> {
-                confirmed("Passport chip", "Passport chip data was read.")
+                confirmed("Document chip", "Document chip data was read.")
             }
 
             VerificationEvidence.NFC_READ_FAILED -> {
-                attention("Passport chip", "The passport chip read failed.")
+                attention("Document chip", "The document chip read failed.")
             }
 
             VerificationEvidence.DG1_AVAILABLE -> {
@@ -278,23 +278,35 @@ public object VerificationUiStateMapper {
             }
 
             VerificationEvidence.PRINTED_CHIP_DATA_MATCH -> {
-                confirmed("Passport consistency", "Printed and chip signals match.")
+                confirmed("Document consistency", "Printed and chip signals match.")
             }
 
             VerificationEvidence.PRINTED_CHIP_DATA_MISMATCH -> {
-                attention("Passport consistency", "Printed and chip signals differ.")
+                attention("Document consistency", "Printed and chip signals differ.")
             }
 
             VerificationEvidence.PASSIVE_AUTHENTICATION_VALID -> {
-                confirmed("Chip authentication", "The authentication signal passed.")
+                confirmed("Signed chip data", "The chip data signature and trusted signer were verified.")
             }
 
             VerificationEvidence.PASSIVE_AUTHENTICATION_FAILED -> {
-                attention("Chip authentication", "The authentication signal failed.")
+                attention("Signed chip data", "The signed chip data could not be verified.")
             }
 
             VerificationEvidence.PASSIVE_AUTHENTICATION_NOT_PERFORMED -> {
-                notPerformed("Chip authentication", "This signal was not performed.")
+                notPerformed("Signed chip data", "This check was not completed.")
+            }
+
+            VerificationEvidence.CHIP_AUTHENTICATION_SUCCEEDED -> {
+                confirmed("Live chip proof", "Fresh chip-key possession was verified.")
+            }
+
+            VerificationEvidence.CHIP_AUTHENTICATION_FAILED -> {
+                attention("Live chip proof", "The chip-key possession check failed.")
+            }
+
+            VerificationEvidence.CHIP_AUTHENTICATION_NOT_PERFORMED -> {
+                notPerformed("Live chip proof", "This check was not completed.")
             }
 
             VerificationEvidence.SELFIE_QUALITY_ACCEPTED -> {
@@ -326,7 +338,7 @@ public object VerificationUiStateMapper {
             }
 
             VerificationEvidence.CAPABILITY_UNAVAILABLE -> {
-                attention("Device capability", "A required device capability is unavailable.")
+                attention("Device capability", "An unavailable device capability was recorded.")
             }
         }
 

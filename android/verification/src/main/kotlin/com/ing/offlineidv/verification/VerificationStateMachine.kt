@@ -10,6 +10,7 @@ import com.ing.offlineidv.verification.model.CameraReady
 import com.ing.offlineidv.verification.model.Cancelled
 import com.ing.offlineidv.verification.model.CapturingDocument
 import com.ing.offlineidv.verification.model.CapturingSelfie
+import com.ing.offlineidv.verification.model.ChipAuthenticationStatus
 import com.ing.offlineidv.verification.model.ChipValidationSummary
 import com.ing.offlineidv.verification.model.ComparingFaces
 import com.ing.offlineidv.verification.model.ComparingPrintedAndChipData
@@ -65,7 +66,7 @@ public fun interface VerificationStateMachine {
     ): TransitionResult
 }
 
-/** Complete pure reducer for the Milestone 3 passport verification journey. */
+/** Complete pure reducer for the Milestone 3 document-verification journey. */
 public object DefaultVerificationStateMachine : VerificationStateMachine {
     override fun transition(
         currentState: VerificationState,
@@ -219,6 +220,7 @@ public object DefaultVerificationStateMachine : VerificationStateMachine {
     ): TransitionResult =
         when (event) {
             VerificationEvent.PassportSelected,
+            VerificationEvent.ResidencePermitSelected,
             VerificationEvent.CameraPermissionRequired,
             -> {
                 if (context.capabilities.isAvailable(com.ing.offlineidv.verification.model.VerificationCapability.CAMERA)) {
@@ -629,6 +631,7 @@ public object DefaultVerificationStateMachine : VerificationStateMachine {
         if (event.summary.dg1Available) evidence += VerificationEvidence.DG1_AVAILABLE
         if (event.summary.dg2Available) evidence += VerificationEvidence.DG2_AVAILABLE
         evidence += passiveAuthenticationEvidence(event.summary)
+        evidence += chipAuthenticationEvidence(event.summary)
         progress = progress.withEvidence(evidence)
         event.summary.portraitReference?.let { progress = progress.withArtifact(it) }
         val effects = mutableListOf<VerificationEffect>(VerificationEffect.CancelTimeout(event.operation))
@@ -1240,6 +1243,26 @@ public object DefaultVerificationStateMachine : VerificationStateMachine {
             }
         }
 
+    private fun chipAuthenticationEvidence(summary: ChipValidationSummary): VerificationEvidence =
+        when (summary.chipAuthentication) {
+            ChipAuthenticationStatus.SUCCEEDED -> {
+                VerificationEvidence.CHIP_AUTHENTICATION_SUCCEEDED
+            }
+
+            ChipAuthenticationStatus.AUTHENTICATION_FAILED -> {
+                VerificationEvidence.CHIP_AUTHENTICATION_FAILED
+            }
+
+            ChipAuthenticationStatus.NOT_PERFORMED,
+            ChipAuthenticationStatus.PREREQUISITE_MISSING,
+            ChipAuthenticationStatus.UNSUPPORTED,
+            ChipAuthenticationStatus.SECURE_MESSAGING_FAILED,
+            ChipAuthenticationStatus.TECHNICAL_ERROR,
+            -> {
+                VerificationEvidence.CHIP_AUTHENTICATION_NOT_PERFORMED
+            }
+        }
+
     private fun retryableStep(step: VerificationStep): RetryableStep? =
         when (step) {
             VerificationStep.DOCUMENT_CAPTURE,
@@ -1369,6 +1392,7 @@ public object DefaultVerificationStateMachine : VerificationStateMachine {
             VerificationEvent.Reset,
             VerificationEvent.Cancel,
             VerificationEvent.PassportSelected,
+            VerificationEvent.ResidencePermitSelected,
             VerificationEvent.CameraPermissionRequired,
             VerificationEvent.CameraPermissionGranted,
             VerificationEvent.CameraPermissionDenied,

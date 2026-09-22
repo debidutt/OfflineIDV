@@ -2,6 +2,8 @@
 
 ## Review status
 
+Historical checkpoint with M7.3/M7.4 addenda: requester authorization on 2026-09-21 permitted the ADR 0016 protected-access/DG1 engineering subset, and separate authorization on 2026-09-22 permitted the bounded Netherlands residence-permit PA/CA subset in ADR 0017. Statements below about the “current runtime” describe the M7/M7.1 snapshot. Legal/open-source, trust/revocation, and final security/release/device approval remain open.
+
 The original Milestone 7 checkpoint correctly approved no protocol dependency and stopped Atlas at the real Android `NfcAdapter`/`Tag`/`IsoDep` boundary. The follow-up Milestone 7.1 investigation completed on 2026-09-01 and supersedes the original evidence gaps:
 
 - [Full M7.1 ePassport protocol investigation](epassport-protocol-investigation.md)
@@ -12,7 +14,7 @@ The original Milestone 7 checkpoint correctly approved no protocol dependency an
 
 M7.1 retrieved and matched the exact source and artifacts, reconstructed transitives, re-audited logging/privacy and downgrade behavior, reviewed realistic alternatives, and investigated offline CSCA governance. The previously reported BAC-key logger is historical and absent from 0.8.8. Current privacy, LGPL, provider, Android/device, trust-store, supply-chain, and organizational-approval limitations remain material.
 
-## Current safety boundary
+## Milestone 7.1 safety boundary (historical)
 
 Atlas still does not implement or package BAC, PACE, secure messaging, passport APDU logic, LDS parsing, DG1/DG2 reads, ASN.1 signature verification, certificate-chain validation, Passive Authentication, or Chip Authentication. Real Android Mode opens/closes `IsoDep`, does not open the MRZ-derived key, transmits no APDU, never falls back to fake NFC, and reports protocol support as unavailable.
 

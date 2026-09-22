@@ -9,7 +9,7 @@ public object AtlasAccessibility {
     public const val NFC_SIMULATION: String =
         "Simulated NFC passport chip read. No NFC hardware is used."
     public const val NFC_READER: String =
-        "NFC passport chip reader. Hold the phone against the passport."
+        "NFC document chip reader. Hold the phone against the document."
     public const val SELFIE_FRAME: String =
         "Synthetic selfie frame. Center one face inside the oval guide."
 

@@ -6,7 +6,7 @@ import java.time.DateTimeException
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
-/** Deterministic, configurable windows for two-digit TD3 dates. */
+/** Deterministic, configurable windows for two-digit MRZ dates. */
 public data class MrzDatePolicy(
     public val maximumBirthAgeYears: Long = 120,
     public val expiryPastYears: Long = 10,
@@ -63,7 +63,7 @@ public interface MrzDateInterpreter {
     ): MrzDateInterpretation
 }
 
-/** Rolling-window TD3 date interpreter defined by [MrzDatePolicy]. */
+/** Rolling-window MRZ date interpreter defined by [MrzDatePolicy]. */
 public class WindowedMrzDateInterpreter(
     private val policy: MrzDatePolicy = MrzDatePolicy(),
 ) : MrzDateInterpreter {

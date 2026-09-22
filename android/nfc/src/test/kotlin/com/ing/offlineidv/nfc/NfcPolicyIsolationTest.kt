@@ -44,15 +44,15 @@ public class NfcPolicyIsolationTest {
             listOf(
                 "android.util.Log",
                 "println(",
-                "CommandAPDU",
-                "ResponseAPDU",
-                "transceive(",
                 "Cipher.getInstance",
                 "Mac.getInstance",
                 "MessageDigest.getInstance",
                 "SecretKey",
-                "doBAC",
-                "doPACE",
+                "addAPDUListener",
+                "notifyExchangedAPDU",
+                "doAA",
+                "doCA",
+                "doTA",
                 "java.net",
                 "http://",
                 "https://",
@@ -61,15 +61,49 @@ public class NfcPolicyIsolationTest {
     }
 
     @Test
-    public fun `real adapter stops before opening access material or using a fake`() {
+    public fun `APDU types and transceive stay inside the single transport bridge`() {
+        val bridge = sourceFile("IsoDepCardServiceBridge.kt")
+        val remaining = nfcRealSourceExcept("IsoDepCardServiceBridge.kt")
+
+        assertTrue(bridge.contains("CommandAPDU"))
+        assertTrue(bridge.contains("ResponseAPDU"))
+        assertTrue(bridge.contains("isoDep.transceive"))
+        assertForbidden(remaining, listOf("CommandAPDU", "ResponseAPDU", ".transceive("))
+    }
+
+    @Test
+    public fun `BAC and PACE invocation stay inside the reviewed protocol reader`() {
+        val reader = sourceFile("JmrtdPassportProtocolReader.kt")
+        val remaining = nfcRealSourceExcept("JmrtdPassportProtocolReader.kt")
+
+        assertTrue(reader.contains("service.doPACE"))
+        assertTrue(reader.contains("service.doBAC"))
+        val pacePath =
+            reader
+                .substringAfter("private fun authenticateWithPaceAndRead")
+                .substringBefore("private fun authenticateWithBacOrReject")
+        assertFalse(pacePath.contains("service.doBAC"))
+        assertForbidden(remaining, listOf("doBAC", "doPACE"))
+    }
+
+    @Test
+    public fun `real adapter delegates to contained protocol reader and never uses a fake`() {
         val source = sourceUnder("android/nfc/src/main/kotlin/com/ing/offlineidv/nfc/real")
 
-        assertTrue(source.contains("PROTOCOL_UNSUPPORTED"))
-        assertFalse(source.contains("accessKey.useValue"))
+        assertTrue(source.contains("JmrtdPassportProtocolReader"))
+        assertTrue(source.contains("accessKey.fields()"))
         assertFalse(source.contains("FakePassportNfcEngine"))
     }
 
     private fun productionSource(): String = sourceUnder("android/nfc/src/main/kotlin/com/ing/offlineidv/nfc")
+
+    private fun sourceFile(name: String): String = locate("android/nfc/src/main/kotlin/com/ing/offlineidv/nfc/real/$name").readText()
+
+    private fun nfcRealSourceExcept(name: String): String =
+        locate("android/nfc/src/main/kotlin/com/ing/offlineidv/nfc/real")
+            .walkTopDown()
+            .filter { it.isFile && it.extension == "kt" && it.name != name }
+            .joinToString("\n") { it.readText() }
 
     private fun sourceUnder(path: String): String =
         locate(path)

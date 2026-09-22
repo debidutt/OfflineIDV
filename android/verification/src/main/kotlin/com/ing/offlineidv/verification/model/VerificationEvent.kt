@@ -34,6 +34,9 @@ public sealed interface VerificationEvent {
 
     public data object PassportSelected : VerificationEvent
 
+    /** A three-line TD1 identity document was selected by the host. */
+    public data object ResidencePermitSelected : VerificationEvent
+
     public data object CameraPermissionRequired : VerificationEvent
 
     public data object CameraPermissionGranted : VerificationEvent

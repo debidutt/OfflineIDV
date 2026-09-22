@@ -4,7 +4,7 @@ import com.ing.offlineidv.core.error.IdvError
 import com.ing.offlineidv.core.error.MrzFailure
 import com.ing.offlineidv.core.security.Redaction
 
-/** Fatal parse failures that prevent a TD3 document model from being built. */
+/** Fatal parse failures that prevent an MRZ document model from being built. */
 public enum class MrzParseError(
     public val stableCode: String,
     internal val coreReason: MrzFailure,

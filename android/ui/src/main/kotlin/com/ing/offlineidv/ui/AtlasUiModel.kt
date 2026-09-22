@@ -15,6 +15,8 @@ public sealed interface AtlasUiState {
 
     public data object PassportInstructions : AtlasUiState
 
+    public data object ResidencePermitInstructions : AtlasUiState
+
     public data class DocumentCapture(
         public val progress: AtlasProgress,
     ) : AtlasUiState
@@ -112,7 +114,11 @@ public sealed interface AtlasUiAction {
 
     public data object SelectPassport : AtlasUiAction
 
+    public data object SelectResidencePermit : AtlasUiAction
+
     public data object ContinuePassportInstructions : AtlasUiAction
+
+    public data object ContinueResidencePermitInstructions : AtlasUiAction
 
     public data object CaptureDocument : AtlasUiAction
 

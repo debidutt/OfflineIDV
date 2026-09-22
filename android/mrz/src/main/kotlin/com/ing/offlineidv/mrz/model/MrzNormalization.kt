@@ -20,7 +20,7 @@ public data class MrzNormalizationChange(
 public sealed interface MrzNormalizationResult {
     public val changes: List<MrzNormalizationChange>
 
-    /** Complete TD3 structure whose raw normalized lines remain module-internal. */
+    /** Complete supported MRZ structure whose raw normalized lines remain module-internal. */
     public class Success internal constructor(
         internal val lines: List<String>,
         changes: List<MrzNormalizationChange>,

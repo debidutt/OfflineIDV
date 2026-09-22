@@ -1,6 +1,6 @@
 # PassportProtocolEngine proposal (Milestone 7.2)
 
-Status: documentation-only proposal for a future, separately approved M7.3. No interface or implementation in this document exists in production source.
+Status: historical M7.2 proposal. Its limited protected-access/DG1 subset was implemented under ADR 0016 and its bounded Netherlands residence-permit PA/CA subset under ADR 0017. Proposed DG2, broad trust, and remaining phases are not implemented. The pseudocode and phase labels below remain design history, not the exact production API.
 
 ## 1. Boundary and ownership
 

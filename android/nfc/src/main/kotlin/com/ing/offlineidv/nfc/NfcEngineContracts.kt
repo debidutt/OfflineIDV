@@ -14,6 +14,8 @@ public class PassportAccessKey(
     /** Supplies the access material only inside a trusted NFC boundary. */
     public fun <R> useValue(block: (String) -> R): R = block(String(value))
 
+    internal fun fields(): MrzAccessFields? = MrzAccessFields.decode(String(value))
+
     override fun equals(other: Any?): Boolean = other is PassportAccessKey && value.contentEquals(other.value)
 
     override fun hashCode(): Int = value.contentHashCode()
@@ -24,6 +26,15 @@ public class PassportAccessKey(
     }
 
     override fun toString(): String = "PassportAccessKey(${Redaction.MARKER})"
+
+    public companion object {
+        /** Creates MRZ-derived BAC/PACE access material without retaining complete MRZ lines. */
+        public fun fromMrzFields(
+            documentNumber: String,
+            dateOfBirth: String,
+            expiryDate: String,
+        ): PassportAccessKey = PassportAccessKey(MrzAccessFields.encode(documentNumber, dateOfBirth, expiryDate))
+    }
 }
 
 /** Printed identity representation retained behind the comparison-engine boundary. */
@@ -35,6 +46,8 @@ public class PrintedPassportData(
     /** Supplies printed comparison material only inside a trusted comparison boundary. */
     public fun <R> useValue(block: (String) -> R): R = block(String(value))
 
+    internal fun fields(): MrzComparisonFields? = MrzComparisonFields.decode(String(value))
+
     override fun equals(other: Any?): Boolean = other is PrintedPassportData && value.contentEquals(other.value)
 
     override fun hashCode(): Int = value.contentHashCode()
@@ -45,6 +58,19 @@ public class PrintedPassportData(
     }
 
     override fun toString(): String = "PrintedPassportData(${Redaction.MARKER})"
+
+    public companion object {
+        /** Retains only fields required for printed-versus-chip consistency. */
+        public fun fromMrzFields(
+            documentNumber: String,
+            nationality: String,
+            dateOfBirth: String,
+            expiryDate: String,
+        ): PrintedPassportData =
+            PrintedPassportData(
+                MrzComparisonFields.encode(documentNumber, nationality, dateOfBirth, expiryDate),
+            )
+    }
 }
 
 /** Safe NFC-read request for one session. */
@@ -58,12 +84,19 @@ public class ChipDataArtifact private constructor(
     dg1Value: String,
     portraitBytes: ByteArray?,
     internal val passiveAuthentication: PassiveAuthenticationObservation,
+    internal val chipAuthentication: ChipAuthenticationObservation,
 ) : AutoCloseable {
     private val dg1Value: CharArray = dg1Value.toCharArray()
     private val portraitBytes: ByteArray? = portraitBytes?.copyOf()
 
     /** Creates deterministic fake chip material without security claims. */
-    public constructor(value: String) : this(value, null, PassiveAuthenticationObservation.NOT_PERFORMED)
+    public constructor(value: String) :
+        this(
+            value,
+            null,
+            PassiveAuthenticationObservation.NOT_PERFORMED,
+            ChipAuthenticationObservation.NOT_PERFORMED,
+        )
 
     /** Supplies chip material only inside a trusted validation/comparison boundary. */
     public fun <R> useValue(block: (String) -> R): R = block(String(dg1Value))
@@ -80,11 +113,15 @@ public class ChipDataArtifact private constructor(
         other is ChipDataArtifact &&
             dg1Value.contentEquals(other.dg1Value) &&
             portraitBytes.contentEqualsNullable(other.portraitBytes) &&
-            passiveAuthentication == other.passiveAuthentication
+            passiveAuthentication == other.passiveAuthentication &&
+            chipAuthentication == other.chipAuthentication
 
-    override fun hashCode(): Int =
-        31 * (31 * dg1Value.contentHashCode() + (portraitBytes?.contentHashCode() ?: 0)) +
-            passiveAuthentication.hashCode()
+    override fun hashCode(): Int {
+        var result = dg1Value.contentHashCode()
+        result = 31 * result + (portraitBytes?.contentHashCode() ?: 0)
+        result = 31 * result + passiveAuthentication.hashCode()
+        return 31 * result + chipAuthentication.hashCode()
+    }
 
     /** Overwrites Atlas-owned DG1 and DG2 copies. */
     override fun close() {
@@ -94,12 +131,33 @@ public class ChipDataArtifact private constructor(
 
     override fun toString(): String = "ChipDataArtifact(${Redaction.MARKER})"
 
-    internal companion object {
-        fun fromRead(
+    public companion object {
+        internal fun fromRead(
             dg1Value: String,
             portraitBytes: ByteArray?,
             passiveAuthentication: PassiveAuthenticationObservation,
-        ): ChipDataArtifact = ChipDataArtifact(dg1Value, portraitBytes, passiveAuthentication)
+            chipAuthentication: ChipAuthenticationObservation = ChipAuthenticationObservation.NOT_PERFORMED,
+        ): ChipDataArtifact =
+            ChipDataArtifact(
+                dg1Value,
+                portraitBytes,
+                passiveAuthentication,
+                chipAuthentication,
+            )
+
+        /** Retains only bounded DG1 fields needed for printed-versus-chip consistency. */
+        public fun fromDg1Fields(
+            documentNumber: String,
+            nationality: String,
+            dateOfBirth: String,
+            expiryDate: String,
+        ): ChipDataArtifact =
+            ChipDataArtifact(
+                dg1Value = MrzComparisonFields.encode(documentNumber, nationality, dateOfBirth, expiryDate),
+                portraitBytes = null,
+                passiveAuthentication = PassiveAuthenticationObservation.NOT_PERFORMED,
+                chipAuthentication = ChipAuthenticationObservation.NOT_PERFORMED,
+            )
     }
 }
 
@@ -182,11 +240,23 @@ public enum class PassiveAuthenticationObservation {
     TECHNICAL_ERROR,
 }
 
+/** Fresh proof-of-possession observation for a public key bound through Passive Authentication. */
+public enum class ChipAuthenticationObservation {
+    SUCCEEDED,
+    AUTHENTICATION_FAILED,
+    NOT_PERFORMED,
+    PREREQUISITE_MISSING,
+    UNSUPPORTED,
+    SECURE_MESSAGING_FAILED,
+    TECHNICAL_ERROR,
+}
+
 /** Safe chip-validation observation with optional portrait material. */
 public class ChipValidationObservation(
     public val dg1Available: Boolean,
     public val dg2Available: Boolean,
     public val passiveAuthentication: PassiveAuthenticationObservation,
+    public val chipAuthentication: ChipAuthenticationObservation = ChipAuthenticationObservation.NOT_PERFORMED,
     public val portrait: ChipPortraitArtifact? = null,
 ) {
     init {
@@ -195,7 +265,8 @@ public class ChipValidationObservation(
 
     override fun toString(): String =
         "ChipValidationObservation(dg1Available=$dg1Available, dg2Available=$dg2Available, " +
-            "passiveAuthentication=$passiveAuthentication, portrait=${if (portrait == null) "absent" else Redaction.MARKER})"
+            "passiveAuthentication=$passiveAuthentication, chipAuthentication=$chipAuthentication, " +
+            "portrait=${if (portrait == null) "absent" else Redaction.MARKER})"
 }
 
 /** Result of chip validation without product-policy interpretation. */
@@ -241,3 +312,107 @@ private fun ByteArray?.contentEqualsNullable(other: ByteArray?): Boolean =
         other == null -> false
         else -> contentEquals(other)
     }
+
+internal data class MrzAccessFields(
+    val documentNumber: String,
+    val dateOfBirth: String,
+    val expiryDate: String,
+) {
+    override fun toString(): String = "MrzAccessFields(${Redaction.MARKER})"
+
+    companion object {
+        fun encode(
+            documentNumber: String,
+            dateOfBirth: String,
+            expiryDate: String,
+        ): String =
+            canonicalDocumentNumber(documentNumber) +
+                canonicalDate(dateOfBirth, "dateOfBirth") +
+                canonicalDate(expiryDate, "expiryDate")
+
+        fun decode(value: String): MrzAccessFields? {
+            if (value.length != ACCESS_LENGTH || !value.all(::isMrzCharacter)) return null
+            val fields =
+                MrzAccessFields(
+                    documentNumber = value.substring(0, DOCUMENT_NUMBER_LENGTH),
+                    dateOfBirth = value.substring(DOCUMENT_NUMBER_LENGTH, DOCUMENT_NUMBER_LENGTH + DATE_LENGTH),
+                    expiryDate = value.substring(DOCUMENT_NUMBER_LENGTH + DATE_LENGTH),
+                )
+            return fields.takeIf { it.dateOfBirth.all(Char::isDigit) && it.expiryDate.all(Char::isDigit) }
+        }
+    }
+}
+
+internal data class MrzComparisonFields(
+    val documentNumber: String,
+    val nationality: String,
+    val dateOfBirth: String,
+    val expiryDate: String,
+) {
+    override fun toString(): String = "MrzComparisonFields(${Redaction.MARKER})"
+
+    companion object {
+        fun encode(
+            documentNumber: String,
+            nationality: String,
+            dateOfBirth: String,
+            expiryDate: String,
+        ): String =
+            canonicalDocumentNumber(documentNumber) +
+                canonicalNationality(nationality) +
+                canonicalDate(dateOfBirth, "dateOfBirth") +
+                canonicalDate(expiryDate, "expiryDate")
+
+        fun decode(value: String): MrzComparisonFields? {
+            if (value.length != COMPARISON_LENGTH || !value.all(::isMrzCharacter)) return null
+            val fields =
+                MrzComparisonFields(
+                    documentNumber = value.substring(0, DOCUMENT_NUMBER_LENGTH),
+                    nationality = value.substring(DOCUMENT_NUMBER_LENGTH, DOCUMENT_NUMBER_LENGTH + NATIONALITY_LENGTH),
+                    dateOfBirth =
+                        value.substring(
+                            DOCUMENT_NUMBER_LENGTH + NATIONALITY_LENGTH,
+                            DOCUMENT_NUMBER_LENGTH + NATIONALITY_LENGTH + DATE_LENGTH,
+                        ),
+                    expiryDate = value.substring(DOCUMENT_NUMBER_LENGTH + NATIONALITY_LENGTH + DATE_LENGTH),
+                )
+            return fields.takeIf {
+                it.nationality.all { character -> character in 'A'..'Z' || character == '<' } &&
+                    it.dateOfBirth.all(Char::isDigit) &&
+                    it.expiryDate.all(Char::isDigit)
+            }
+        }
+    }
+}
+
+private fun canonicalDocumentNumber(value: String): String {
+    val canonical = value.uppercase().trimEnd('<').padEnd(DOCUMENT_NUMBER_LENGTH, '<')
+    require(canonical.length == DOCUMENT_NUMBER_LENGTH && canonical.all(::isMrzCharacter)) {
+        "documentNumber must contain at most nine MRZ characters"
+    }
+    return canonical
+}
+
+private fun canonicalNationality(value: String): String {
+    val canonical = value.uppercase()
+    require(canonical.length == NATIONALITY_LENGTH && canonical.all { it in 'A'..'Z' || it == '<' }) {
+        "nationality must contain exactly three MRZ letters"
+    }
+    return canonical
+}
+
+private fun canonicalDate(
+    value: String,
+    name: String,
+): String {
+    require(value.length == DATE_LENGTH && value.all(Char::isDigit)) { "$name must use YYMMDD digits" }
+    return value
+}
+
+private fun isMrzCharacter(value: Char): Boolean = value in 'A'..'Z' || value in '0'..'9' || value == '<'
+
+private const val DOCUMENT_NUMBER_LENGTH: Int = 9
+private const val NATIONALITY_LENGTH: Int = 3
+private const val DATE_LENGTH: Int = 6
+private const val ACCESS_LENGTH: Int = DOCUMENT_NUMBER_LENGTH + DATE_LENGTH + DATE_LENGTH
+private const val COMPARISON_LENGTH: Int = DOCUMENT_NUMBER_LENGTH + NATIONALITY_LENGTH + DATE_LENGTH + DATE_LENGTH

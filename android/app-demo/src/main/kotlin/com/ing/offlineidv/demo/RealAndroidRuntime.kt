@@ -25,9 +25,11 @@ import com.ing.offlineidv.core.error.NfcFailure
 import com.ing.offlineidv.core.result.IdvResult
 import com.ing.offlineidv.core.session.IdvSessionId
 import com.ing.offlineidv.nfc.AsyncPassportNfcEngine
+import com.ing.offlineidv.nfc.ChipAuthenticationObservation
 import com.ing.offlineidv.nfc.ChipDataArtifact
 import com.ing.offlineidv.nfc.ChipValidationEngine
 import com.ing.offlineidv.nfc.ChipValidationResult
+import com.ing.offlineidv.nfc.MrzPrintedChipComparisonEngine
 import com.ing.offlineidv.nfc.NfcCapability
 import com.ing.offlineidv.nfc.NfcReadRequest
 import com.ing.offlineidv.nfc.NfcReadResult
@@ -38,7 +40,6 @@ import com.ing.offlineidv.nfc.PassportChipValidationEngine
 import com.ing.offlineidv.nfc.PrintedChipComparisonEngine
 import com.ing.offlineidv.nfc.PrintedChipComparisonResult
 import com.ing.offlineidv.nfc.PrintedPassportData
-import com.ing.offlineidv.nfc.Td3PrintedChipComparisonEngine
 import com.ing.offlineidv.nfc.real.AndroidNfcCapabilityDetector
 import com.ing.offlineidv.nfc.real.AndroidNfcTagDiscovery
 import com.ing.offlineidv.ocr.AsyncOcrEngine
@@ -48,6 +49,7 @@ import com.ing.offlineidv.ocr.OcrImage
 import com.ing.offlineidv.ocr.OcrImageSource
 import com.ing.offlineidv.ocr.real.MlKitOcrEngine
 import com.ing.offlineidv.verification.artifact.SessionArtifactStore
+import com.ing.offlineidv.verification.model.ChipAuthenticationStatus
 import com.ing.offlineidv.verification.model.ChipValidationSummary
 import com.ing.offlineidv.verification.model.PassiveAuthenticationStatus
 import com.ing.offlineidv.verification.model.PrintedChipComparisonStatus
@@ -65,6 +67,8 @@ import com.ing.offlineidv.verification.orchestration.SerializedVerificationOrche
 import com.ing.offlineidv.verification.orchestration.VerificationEffectHandler
 import com.ing.offlineidv.verification.orchestration.VerificationEventSink
 import com.ing.offlineidv.verification.real.RealMrzPipeline
+import com.ing.offlineidv.verification.real.RealMrzProcessor
+import com.ing.offlineidv.verification.real.RealTd1MrzPipeline
 import com.ing.offlineidv.verification.scheduling.VerificationScheduler
 import java.time.Duration
 import java.time.LocalDate
@@ -152,7 +156,7 @@ internal class RealVerificationEffectHandler(
     private val documentCaptureEngine: AsyncDocumentCaptureEngine,
     private val documentQualityEngine: AsyncDocumentQualityEngine,
     private val ocrEngine: AsyncOcrEngine,
-    private val mrzPipeline: RealMrzPipeline,
+    private val mrzPipeline: RealMrzProcessor,
     private val nfcEngine: AsyncPassportNfcEngine,
     private val chipValidationEngine: ChipValidationEngine,
     private val printedChipComparisonEngine: PrintedChipComparisonEngine,
@@ -513,6 +517,7 @@ internal class RealVerificationEffectHandler(
                     dg1Available = observation.dg1Available,
                     dg2Available = observation.dg2Available,
                     passiveAuthentication = observation.passiveAuthentication.toVerificationStatus(),
+                    chipAuthentication = observation.chipAuthentication.toVerificationStatus(),
                     portraitReference = (portraitReference as? IdvResult.Success)?.value,
                 ),
             ),
@@ -645,6 +650,17 @@ internal class RealVerificationEffectHandler(
             PassiveAuthenticationObservation.UNSUPPORTED -> PassiveAuthenticationStatus.UNSUPPORTED
             PassiveAuthenticationObservation.TECHNICAL_ERROR -> PassiveAuthenticationStatus.TECHNICAL_ERROR
         }
+
+    private fun ChipAuthenticationObservation.toVerificationStatus(): ChipAuthenticationStatus =
+        when (this) {
+            ChipAuthenticationObservation.SUCCEEDED -> ChipAuthenticationStatus.SUCCEEDED
+            ChipAuthenticationObservation.AUTHENTICATION_FAILED -> ChipAuthenticationStatus.AUTHENTICATION_FAILED
+            ChipAuthenticationObservation.NOT_PERFORMED -> ChipAuthenticationStatus.NOT_PERFORMED
+            ChipAuthenticationObservation.PREREQUISITE_MISSING -> ChipAuthenticationStatus.PREREQUISITE_MISSING
+            ChipAuthenticationObservation.UNSUPPORTED -> ChipAuthenticationStatus.UNSUPPORTED
+            ChipAuthenticationObservation.SECURE_MESSAGING_FAILED -> ChipAuthenticationStatus.SECURE_MESSAGING_FAILED
+            ChipAuthenticationObservation.TECHNICAL_ERROR -> ChipAuthenticationStatus.TECHNICAL_ERROR
+        }
 }
 
 /** Fully injected single-session real Android runtime. */
@@ -671,13 +687,45 @@ internal class RealAndroidVerificationRuntime(
     fun nfcCapability(): NfcCapability = nfcCapabilityDetector.detect()
 }
 
+/** Pure composition profile; document choice changes adapters and policy before the session starts. */
+internal data class RealAndroidDocumentProfile(
+    val policy: VerificationPolicy,
+    val advertiseDetectedNfc: Boolean,
+)
+
+internal fun RealAndroidDocumentType.profile(): RealAndroidDocumentProfile =
+    when (this) {
+        RealAndroidDocumentType.PASSPORT_TD3 -> {
+            RealAndroidDocumentProfile(
+                policy = VerificationPolicy(),
+                advertiseDetectedNfc = true,
+            )
+        }
+
+        RealAndroidDocumentType.NETHERLANDS_RESIDENCE_PERMIT_TD1 -> {
+            RealAndroidDocumentProfile(
+                policy =
+                    VerificationPolicy(
+                        requireNfcRead = true,
+                        requirePrintedChipConsistency = true,
+                        requireFaceMatch = false,
+                        requirePassiveAuthentication = true,
+                        requireChipAuthentication = true,
+                    ),
+                advertiseDetectedNfc = true,
+            )
+        }
+    }
+
 /** Explicit real composition; it never falls back to synthetic engines. */
 internal object RealAndroidVerificationFactory {
     fun create(
         context: Context,
         sessionId: IdvSessionId,
         permissionGateway: CameraPermissionGateway,
+        documentType: RealAndroidDocumentType,
     ): RealAndroidVerificationRuntime {
+        val profile = documentType.profile()
         val background = Executors.newSingleThreadExecutor()
         val imageStore = InMemoryCapturedImageStore(sessionId)
         val artifactStore = SessionArtifactStore(sessionId)
@@ -719,18 +767,34 @@ internal object RealAndroidVerificationFactory {
                 documentQualityEngine = quality,
                 ocrEngine = ocr,
                 mrzPipeline =
-                    RealMrzPipeline(
-                        artifactStore = artifactStore,
-                        referenceDate = LocalDate.now(ZoneOffset.UTC),
-                        diagnosticSink =
-                            MrzDebugDiagnosticSink(
-                                enabled =
-                                    context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
-                            ),
-                    ),
+                    when (documentType) {
+                        RealAndroidDocumentType.PASSPORT_TD3 -> {
+                            RealMrzPipeline(
+                                artifactStore = artifactStore,
+                                referenceDate = LocalDate.now(ZoneOffset.UTC),
+                                diagnosticSink =
+                                    MrzDebugDiagnosticSink(
+                                        enabled =
+                                            context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
+                                    ),
+                            )
+                        }
+
+                        RealAndroidDocumentType.NETHERLANDS_RESIDENCE_PERMIT_TD1 -> {
+                            RealTd1MrzPipeline(
+                                artifactStore = artifactStore,
+                                referenceDate = LocalDate.now(ZoneOffset.UTC),
+                                diagnosticSink =
+                                    MrzDebugDiagnosticSink(
+                                        enabled =
+                                            context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
+                                    ),
+                            )
+                        }
+                    },
                 nfcEngine = nfc,
                 chipValidationEngine = PassportChipValidationEngine,
-                printedChipComparisonEngine = Td3PrintedChipComparisonEngine,
+                printedChipComparisonEngine = MrzPrintedChipComparisonEngine,
                 artifactStore = artifactStore,
                 imageStore = imageStore,
                 scheduler = scheduler,
@@ -739,12 +803,14 @@ internal object RealAndroidVerificationFactory {
                 closeableResources = listOf(camera, ocr, nfc, nfcTagDiscovery),
             )
         val availableCapabilities = mutableSetOf(VerificationCapability.CAMERA)
-        if (nfcCapabilityDetector.detect() != NfcCapability.UNAVAILABLE) {
+        if (profile.advertiseDetectedNfc && nfcCapabilityDetector.detect() != NfcCapability.UNAVAILABLE) {
             availableCapabilities += VerificationCapability.NFC
+            availableCapabilities += VerificationCapability.PASSIVE_AUTHENTICATION
+            availableCapabilities += VerificationCapability.CHIP_AUTHENTICATION
         }
         val contextModel =
             VerificationContext(
-                policy = VerificationPolicy(),
+                policy = profile.policy,
                 capabilities = VerificationCapabilities(availableCapabilities),
             )
         return RealAndroidVerificationRuntime(

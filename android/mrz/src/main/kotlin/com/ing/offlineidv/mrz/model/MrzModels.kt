@@ -5,10 +5,11 @@ import java.time.LocalDate
 
 /** MRZ formats understood by a domain document. */
 public enum class MrzFormat {
+    TD1,
     TD3,
 }
 
-/** Fixed TD3 fields, used for safe issue and checksum attribution. */
+/** Fixed MRZ fields, used for safe issue and checksum attribution. */
 public enum class MrzField {
     DOCUMENT_CODE,
     ISSUING_STATE,
@@ -26,7 +27,7 @@ public enum class MrzField {
     COMPOSITE_CHECK_DIGIT,
 }
 
-/** Sex marker encoded by TD3. No inference beyond the MRZ marker is performed. */
+/** Sex marker encoded by an MRZ. No inference beyond the MRZ marker is performed. */
 public enum class MrzSex {
     MALE,
     FEMALE,
@@ -106,4 +107,26 @@ public class Td3PassportMrz(
     override val format: MrzFormat = MrzFormat.TD3
 
     override fun toString(): String = "Td3PassportMrz(${Redaction.MARKER})"
+}
+
+/**
+ * Parsed TD1 official-document fields, including residence permits.
+ *
+ * Values are sensitive and intended only for trusted in-memory consumers. Raw normalized lines
+ * are not retained, and [toString] never renders a field.
+ */
+public class Td1ResidencePermitMrz(
+    public val documentCode: String,
+    public val issuingState: String,
+    public val name: MrzName,
+    public val documentNumber: String,
+    public val nationality: String,
+    public val dateOfBirth: MrzDate?,
+    public val sex: MrzSex,
+    public val expiryDate: MrzDate?,
+    public val optionalData: String?,
+) : MrzDocument {
+    override val format: MrzFormat = MrzFormat.TD1
+
+    override fun toString(): String = "Td1ResidencePermitMrz(${Redaction.MARKER})"
 }

@@ -30,6 +30,11 @@ public data class RealMrzPipelineResult(
     public val accessKeyReference: VerificationArtifactReference,
 )
 
+/** Document-format-specific OCR-to-MRZ processing boundary used by the real effect handler. */
+public fun interface RealMrzProcessor {
+    public fun process(ocrReference: VerificationArtifactReference): IdvResult<RealMrzPipelineResult>
+}
+
 /** Real OCR-to-MRZ bridge that delegates all parsing and validation to Milestone 2. */
 public class RealMrzPipeline(
     private val artifactStore: SessionArtifactStore,
@@ -38,8 +43,8 @@ public class RealMrzPipeline(
     private val parser: Td3MrzParser = Td3MrzParser(),
     private val normalizer: MrzNormalizer = MrzNormalizer(),
     private val diagnosticSink: MrzDiagnosticSink = MrzDiagnosticSink.NONE,
-) {
-    public fun process(ocrReference: VerificationArtifactReference): IdvResult<RealMrzPipelineResult> {
+) : RealMrzProcessor {
+    override fun process(ocrReference: VerificationArtifactReference): IdvResult<RealMrzPipelineResult> {
         val resolved =
             artifactStore.resolve(
                 ocrReference,
@@ -105,17 +110,16 @@ public class RealMrzPipeline(
                 failureReason = failureReason(normalization, parsed, validation),
             ),
         )
-        val printedValue = candidate.useText { it.toString() }
         val printed =
             artifactStore.register(
                 VerificationArtifactKind.MRZ_PRINTED_DATA,
-                PrintedPassportData(printedValue),
+                printedDataFrom(parsed),
             )
         if (printed is IdvResult.Failure) return printed
         val accessKey =
             artifactStore.register(
                 VerificationArtifactKind.MRZ_ACCESS_KEY,
-                PassportAccessKey(accessKeyFrom(parsed)),
+                accessKeyFrom(parsed),
             )
         if (accessKey is IdvResult.Failure) return accessKey
         return IdvResult.Success(
@@ -214,7 +218,9 @@ public class RealMrzPipeline(
 
             MrzValidationIssueType.UNSUPPORTED_CHARACTER -> MrzDiagnosticFailureReason.UNSUPPORTED_CHARACTER
 
-            MrzValidationIssueType.UNSUPPORTED_TD3_VARIANT -> MrzDiagnosticFailureReason.UNSUPPORTED_FORMAT
+            MrzValidationIssueType.UNSUPPORTED_TD1_VARIANT,
+            MrzValidationIssueType.UNSUPPORTED_TD3_VARIANT,
+            -> MrzDiagnosticFailureReason.UNSUPPORTED_FORMAT
 
             MrzValidationIssueType.INVALID_DATE_FORMAT,
             MrzValidationIssueType.IMPOSSIBLE_DATE,
@@ -243,29 +249,55 @@ public class RealMrzPipeline(
             is MrzParseResult.Rejected -> result.validation
         }
 
-    private fun accessKeyFrom(result: MrzParseResult<Td3PassportMrz>): String =
+    private fun printedDataFrom(result: MrzParseResult<Td3PassportMrz>): PrintedPassportData =
         when (result) {
             is MrzParseResult.Parsed -> {
                 val document = result.document
-                document.documentNumber +
-                    document.dateOfBirth
-                        ?.preferredValue
-                        ?.format(MRZ_DATE)
-                        .orEmpty() +
-                    document.expiryDate
-                        ?.preferredValue
-                        ?.format(MRZ_DATE)
-                        .orEmpty()
+                val dateOfBirth =
+                    document.dateOfBirth?.preferredValue?.format(MRZ_DATE)
+                        ?: return PrintedPassportData(UNAVAILABLE_ARTIFACT_VALUE)
+                val expiryDate =
+                    document.expiryDate?.preferredValue?.format(MRZ_DATE)
+                        ?: return PrintedPassportData(UNAVAILABLE_ARTIFACT_VALUE)
+                PrintedPassportData.fromMrzFields(
+                    documentNumber = document.documentNumber,
+                    nationality = document.nationality,
+                    dateOfBirth = dateOfBirth,
+                    expiryDate = expiryDate,
+                )
             }
 
             is MrzParseResult.Rejected -> {
-                "unavailable"
+                PrintedPassportData(UNAVAILABLE_ARTIFACT_VALUE)
+            }
+        }
+
+    private fun accessKeyFrom(result: MrzParseResult<Td3PassportMrz>): PassportAccessKey =
+        when (result) {
+            is MrzParseResult.Parsed -> {
+                val document = result.document
+                val dateOfBirth =
+                    document.dateOfBirth?.preferredValue?.format(MRZ_DATE)
+                        ?: return PassportAccessKey(UNAVAILABLE_ARTIFACT_VALUE)
+                val expiryDate =
+                    document.expiryDate?.preferredValue?.format(MRZ_DATE)
+                        ?: return PassportAccessKey(UNAVAILABLE_ARTIFACT_VALUE)
+                PassportAccessKey.fromMrzFields(
+                    documentNumber = document.documentNumber,
+                    dateOfBirth = dateOfBirth,
+                    expiryDate = expiryDate,
+                )
+            }
+
+            is MrzParseResult.Rejected -> {
+                PassportAccessKey(UNAVAILABLE_ARTIFACT_VALUE)
             }
         }
 
     private companion object {
         val MRZ_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyMMdd")
         val TD3_LINE_LENGTHS: List<Int> = listOf(44, 44)
+        const val UNAVAILABLE_ARTIFACT_VALUE: String = ""
     }
 
     private data class OcrObservation(

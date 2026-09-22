@@ -12,8 +12,8 @@ Real Android Mode
   -> CameraXDocumentCaptureEngine
   -> CameraXDocumentQualityEngine
   -> MlKitOcrEngine
-  -> MrzCandidateExtractor
-  -> existing Td3MrzParser / MrzEvidenceMapper
+  -> selected TD3 or TD1 candidate extractor
+  -> selected format parser / shared MrzEvidenceMapper
 ```
 
 Both paths enter and leave the existing `VerificationEffectHandler` boundary. Feature engines return observations only. They do not dispatch verification events, inspect reducer state, select a next step, decide retry, evaluate policy, or create a terminal outcome.
@@ -72,22 +72,22 @@ The OCR adapter uses `com.google.mlkit:text-recognition:16.0.1`, the statically 
 
 ## MRZ candidate extraction
 
-`MrzCandidateExtractor` is pure Kotlin in the OCR module. It:
+`MrzCandidateExtractor` and `Td1MrzCandidateExtractor` are pure Kotlin in the OCR module. They:
 
 - uppercases and retains only `A-Z`, `0-9`, and `<` after tolerating OCR whitespace;
 - joins at most three adjacent line fragments;
-- considers TD3-like lines from 38 to 48 characters;
-- requires a passport-like first line and numeric content in the second;
-- prefers `P<`, lengths nearest 44, and stable source order; and
-- exposes the selected pair only through scoped access with a redacted `toString`.
+- consider TD3-like lines from 38 to 48 characters or TD1-like lines from 26 to 34 characters;
+- require a format-appropriate document prefix and numeric content in the date-bearing line;
+- prefer lengths nearest 44 or 30 and stable source order; and
+- expose the selected pair or triplet only through scoped access with a redacted `toString`.
 
-It does not parse ICAO fields, calculate check digits, interpret dates, correct ambiguous fields, or declare validity. `RealMrzPipeline` passes the candidate to the existing Milestone 2 `Td3MrzParser`, maps its `MrzValidationResult` through the existing Milestone 3 `MrzEvidenceMapper`, and keeps derived printed/access material in the session artifact store.
+Neither extractor parses ICAO fields, calculates check digits, interprets dates, corrects ambiguous fields, or declares validity. The pre-session document profile selects `RealMrzPipeline`/`Td3MrzParser` for passports or `RealTd1MrzPipeline`/`Td1MrzParser` for residence permits. Both map `MrzValidationResult` through the existing `MrzEvidenceMapper`. After a parsed result, both pipelines retain only the MRZ-derived document number/date access material and the four printed fields required for DG1 consistency; complete MRZ lines are not registered as NFC artifacts.
 
 ## Privacy-safe physical-scan diagnostics
 
-Real Android Mode injects a diagnostic sink into `RealMrzPipeline` only when the installed application is debuggable. The pure-Kotlin pipeline remains Android-free, and release builds provide a disabled sink. Diagnostics cannot influence verification: sink failures are contained and the reducer, policy evaluator, MRZ thresholds, and parser result remain unchanged.
+Real Android Mode injects a diagnostic sink into the selected real MRZ pipeline only when the installed application is debuggable. The pure-Kotlin pipelines remain Android-free, and release builds provide a disabled sink. Diagnostics cannot influence verification: sink failures are contained and the reducer, policy evaluator, MRZ thresholds, and parser result remain unchanged.
 
-The sink emits only the `MRZ_DIAG` prefix, OCR block/line counts, selected-candidate line counts and lengths, the closed `TD3`/`UNKNOWN` format classification, closed stage statuses, and a predefined failure-reason enum. `NOT_RUN` distinguishes a skipped downstream stage from an actual parser or validation failure. The diagnostic contract has no string or byte-array field capable of carrying OCR text, MRZ lines, names, document numbers, dates, or other identity values. `MlKitOcrEngine` supplies only `textBlocks.size`; the recognized text remains redacted inside `OcrTextArtifact`.
+The sink emits only the `MRZ_DIAG` prefix, OCR block/line counts, selected-candidate line counts and lengths, the closed `TD1`/`TD3`/`UNKNOWN` format classification, closed stage statuses, and a predefined failure-reason enum. `NOT_RUN` distinguishes a skipped downstream stage from an actual parser or validation failure. The diagnostic contract has no string or byte-array field capable of carrying OCR text, MRZ lines, names, document numbers, dates, or other identity values. `MlKitOcrEngine` supplies only `textBlocks.size`; the recognized text remains redacted inside `OcrTextArtifact`.
 
 These diagnostics distinguish no-candidate, wrong-length/normalization, parse, checksum/validation, and later orchestration investigations during authorized physical-device testing. They are not analytics and are not persisted.
 
@@ -96,9 +96,9 @@ These diagnostics distinguish no-candidate, wrong-length/normalization, parse, c
 `AtlasRuntimeMode` is selectable only on Welcome:
 
 - `DEMO` remains the default and exposes the existing fifteen deterministic scenarios.
-- `REAL_ANDROID` constructs CameraX, quality, bundled ML Kit, and the real MRZ pipeline. It never falls back to fakes.
+- `REAL_ANDROID` constructs CameraX, quality, bundled ML Kit, and the real MRZ pipeline selected by the document profile. It never falls back to fakes.
 
-The real verification context advertises only the camera capability. The existing default policy still requires NFC and face evidence, so a structurally valid real MRZ proceeds to the existing reducer decision and reports required unavailable capabilities honestly. No NFC or face implementation is smuggled into this milestone.
+The passport profile preserves the existing default NFC and face requirements and advertises detected NFC hardware. The Netherlands residence-permit profile requires NFC read, printed/DG1 consistency, Passive Authentication, and Chip Authentication, advertises detected NFC hardware, and keeps face comparison optional. A valid residence-permit MRZ therefore reaches the existing reducer-owned NFC path and completes only after those configured observations reach policy evaluation. The UI keeps signed-data evidence separate from live-chip proof and does not convert either into holder-identity or liveness claims.
 
 The same mapper, capture action, processing screens, recovery presentation, and terminal presentation are used for both modes. UI models structurally cannot contain image or OCR payloads.
 
@@ -109,11 +109,11 @@ The same mapper, capture action, processing screens, recovery presentation, and 
 - Backup remains disabled and cleartext traffic remains disabled.
 - Real capture requires a physical/emulated back camera and a granted runtime permission.
 - The quality heuristic is deliberately basic and requires calibration across representative devices before production assessment.
-- OCR is Latin TD3-oriented and does not support other document formats.
+- OCR candidate extraction supports strict TD3 passports and standard three-line TD1 official documents; other layouts remain unsupported.
 - Process death restarts the active session; persistence is intentionally absent.
 - ML Kit recognition and CameraX preview/capture require device testing across vendors, orientation changes, low memory, and denied/permanently-denied permissions.
 - This milestone makes no document authenticity, NFC, face, biometric, or liveness claim.
 
 ## Extension path
 
-Milestone 7 may add a real NFC effect adapter without changing camera/OCR engines, the MRZ parser, UI payload boundaries, or reducer authority. Later lifecycle/security work may replace the memory owner with reviewed private expiring storage only if capture retention becomes unavoidable. Camera quality algorithms may be replaced behind the same observation contract after calibration; they must remain policy-free.
+Later lifecycle/security work may replace the memory owner with reviewed private expiring storage only if capture retention becomes unavoidable. Camera quality algorithms may be replaced behind the same observation contract after calibration; they must remain policy-free. Additional document formats require a separate parser/extractor/profile and must not add platform or policy knowledge to the shared mapper.

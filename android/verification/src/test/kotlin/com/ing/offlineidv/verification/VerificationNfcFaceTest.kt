@@ -11,9 +11,13 @@ import com.ing.offlineidv.verification.fixtures.advanceToNfcRead
 import com.ing.offlineidv.verification.fixtures.advanceToPrintedChipComparison
 import com.ing.offlineidv.verification.fixtures.advanceToSelfieQuality
 import com.ing.offlineidv.verification.fixtures.completeMrz
+import com.ing.offlineidv.verification.fixtures.startAndInitialize
+import com.ing.offlineidv.verification.model.AwaitingNfc
 import com.ing.offlineidv.verification.model.AwaitingSelfie
 import com.ing.offlineidv.verification.model.CapturingSelfie
+import com.ing.offlineidv.verification.model.ChipAuthenticationStatus
 import com.ing.offlineidv.verification.model.ChipValidationSummary
+import com.ing.offlineidv.verification.model.ComparingPrintedAndChipData
 import com.ing.offlineidv.verification.model.EvaluatingSelfie
 import com.ing.offlineidv.verification.model.FaceComparisonStatus
 import com.ing.offlineidv.verification.model.Inconclusive
@@ -40,6 +44,84 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 public class VerificationNfcFaceTest {
+    @Test
+    public fun `residence permit completes required NFC consistency without entering selfie flow`() {
+        val policy =
+            VerificationPolicy(
+                requireNfcRead = true,
+                requirePrintedChipConsistency = true,
+                requireFaceMatch = false,
+            )
+        val capabilities =
+            VerificationCapabilities(
+                setOf(
+                    VerificationCapability.CAMERA,
+                    VerificationCapability.NFC,
+                ),
+            )
+        val harness = StateMachineHarness(context = VerificationContext(policy = policy, capabilities = capabilities))
+        harness.startAndInitialize()
+        harness.dispatch(VerificationEvent.ResidencePermitSelected)
+        harness.dispatch(VerificationEvent.CameraPermissionGranted)
+        harness.dispatch(VerificationEvent.CameraReady(harness.operation()))
+        harness.dispatch(VerificationEvent.CaptureRequested)
+        harness.dispatch(VerificationEvent.DocumentCaptured(harness.operation(), VerificationFixtures.documentReference))
+        harness.dispatch(VerificationEvent.CaptureQualityAccepted(harness.operation()))
+        harness.dispatch(VerificationEvent.OcrSucceeded(harness.operation(), VerificationFixtures.ocrReference))
+        harness.dispatch(VerificationEvent.MrzExtractionSucceeded(harness.operation()))
+        harness.completeMrz()
+
+        assertTrue(harness.state is AwaitingNfc)
+        harness.dispatch(VerificationEvent.NfcRequested)
+        harness.dispatch(VerificationEvent.NfcReadSucceeded(harness.operation(), VerificationFixtures.chipReference))
+        harness.dispatch(
+            VerificationEvent.ChipValidationCompleted(
+                harness.operation(),
+                VerificationFixtures.validChipSummary,
+            ),
+        )
+        assertTrue(harness.state is ComparingPrintedAndChipData)
+        harness.dispatch(
+            VerificationEvent.PrintedAndChipComparisonCompleted(
+                harness.operation(),
+                PrintedChipComparisonStatus.MATCH,
+            ),
+        )
+
+        assertTrue(harness.state is MakingDecision)
+        assertTrue(harness.effects.none { it is VerificationEffect.PromptForSelfie })
+    }
+
+    @Test
+    public fun `optional NFC and face policy still skips both without changing reducer rules`() {
+        val policy =
+            VerificationPolicy(
+                requireNfcRead = false,
+                requirePrintedChipConsistency = false,
+                requireFaceMatch = false,
+            )
+        val capabilities = VerificationCapabilities(setOf(VerificationCapability.CAMERA))
+        val harness = StateMachineHarness(context = VerificationContext(policy = policy, capabilities = capabilities))
+        harness.startAndInitialize()
+        harness.dispatch(VerificationEvent.ResidencePermitSelected)
+        harness.dispatch(VerificationEvent.CameraPermissionGranted)
+        harness.dispatch(VerificationEvent.CameraReady(harness.operation()))
+        harness.dispatch(VerificationEvent.CaptureRequested)
+        harness.dispatch(VerificationEvent.DocumentCaptured(harness.operation(), VerificationFixtures.documentReference))
+        harness.dispatch(VerificationEvent.CaptureQualityAccepted(harness.operation()))
+        harness.dispatch(VerificationEvent.OcrSucceeded(harness.operation(), VerificationFixtures.ocrReference))
+        harness.dispatch(VerificationEvent.MrzExtractionSucceeded(harness.operation()))
+
+        harness.completeMrz()
+
+        assertTrue(harness.state is MakingDecision)
+        assertTrue(harness.effects.none { it is VerificationEffect.PromptForNfc })
+        assertTrue(harness.effects.none { it is VerificationEffect.PromptForSelfie })
+        harness.dispatch(VerificationEvent.DecisionCompleted(harness.operation()))
+        assertTrue(harness.state is Verified)
+        assertTrue(VerificationEvidence.REQUIRED_STEP_SKIPPED !in (harness.state as Verified).summary.evidence)
+    }
+
     @Test
     public fun `NFC read success advances to chip validation`() {
         val harness = StateMachineHarness()
@@ -257,6 +339,30 @@ public class VerificationNfcFaceTest {
             assertTrue(VerificationEvidence.PASSIVE_AUTHENTICATION_NOT_PERFORMED in evidence)
             assertTrue(VerificationEvidence.PASSIVE_AUTHENTICATION_VALID !in evidence)
         }
+    }
+
+    @Test
+    public fun `signed data and live chip proof remain separate evidence`() {
+        val harness = StateMachineHarness()
+        harness.advanceToChipValidation()
+
+        val result =
+            harness.dispatch(
+                VerificationEvent.ChipValidationCompleted(
+                    harness.operation(),
+                    ChipValidationSummary(
+                        dg1Available = true,
+                        dg2Available = false,
+                        passiveAuthentication = PassiveAuthenticationStatus.VALID,
+                        chipAuthentication = ChipAuthenticationStatus.AUTHENTICATION_FAILED,
+                    ),
+                ),
+            )
+
+        val evidence = (result.state as com.ing.offlineidv.verification.model.ActiveVerificationState).progress.evidence
+        assertTrue(VerificationEvidence.PASSIVE_AUTHENTICATION_VALID in evidence)
+        assertTrue(VerificationEvidence.CHIP_AUTHENTICATION_FAILED in evidence)
+        assertTrue(VerificationEvidence.CHIP_AUTHENTICATION_SUCCEEDED !in evidence)
     }
 
     @Test

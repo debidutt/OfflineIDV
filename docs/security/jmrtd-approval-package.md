@@ -1,14 +1,14 @@
 # JMRTD 0.8.8 approval package (Milestone 7.2)
 
-Evidence snapshot: 2026-09-02. This is an engineering approval package, not legal advice and not authorization to integrate a dependency.
+Evidence snapshot: 2026-09-02. Authorization addenda: on 2026-09-21 the repository requester explicitly approved the narrowly limited M7.3 engineering scope and frozen dependency graph; on 2026-09-22 the requester separately approved bounded Netherlands residence-permit PA/CA engineering scope recorded in ADR 0017. Legal/open-source, security/PKI, trust/revocation, release, and device review remain blockers. This record is not legal advice, does not fill the formal review boxes below, and does not authorize distribution or a production-readiness claim.
 
 ## 1. Executive decision summary
 
-Project Atlas is **READY FOR HUMAN APPROVAL REVIEW** of a future, separately authorized M7.3 integration of `org.jmrtd:jmrtd:0.8.8`. JMRTD remains **ACCEPT WITH LIMITATIONS**. The production decision remains **KEEP TRANSPORT-ONLY FALLBACK** until every blocking review below is approved or approved with explicitly accepted conditions.
+At the M7.2 evidence snapshot, Project Atlas was **READY FOR HUMAN APPROVAL REVIEW** of a future, separately authorized M7.3 integration of `org.jmrtd:jmrtd:0.8.8`. The requester subsequently authorized the limited M7.3 engineering implementation recorded in ADR 0016. JMRTD remains **ACCEPT WITH LIMITATIONS**, and release/distribution remains blocked until every applicable review below is approved or approved with explicitly accepted conditions.
 
-This package does not approve JMRTD, does not add it to Gradle, and does not begin M7.3. The approval question is whether the frozen candidate and the mandatory controls in this package are acceptable as the basis for future implementation.
+The original M7.2 package did not approve or add JMRTD. Later requester authorizations permit the protected-access/bounded-DG1 subset in ADR 0016 and the bounded, single-anchor Netherlands residence-permit PA/CA subset in ADR 0017. DG2, AA/TA, broad governed trust/revocation coverage, face work, aggregate authenticity/holder claims, and Milestone 8 remain unauthorized. All unchecked legal, security, privacy, architecture, release, PKI, and risk decisions remain blocking at release unless an authorized reviewer records a decision.
 
-## 2. Verified baseline
+## 2. Historical M7.2 verified baseline
 
 | Check | M7.2 finding |
 | --- | --- |
@@ -276,7 +276,7 @@ Conditions, owners, due dates, accepted residual risks: ____________________
 
 ## 12. Approval rule and unresolved blockers
 
-M7.3 must not start unless every blocking category is **APPROVED** or **APPROVED WITH CONDITIONS**, and every implementation-blocking condition is explicitly resolved or accepted by its authorized owner. A missing review is not approval. Silence is not approval. M7.1's **ACCEPT WITH LIMITATIONS** finding is not authorization.
+The M7.2 decision required separate authorization before M7.3 could start. The requester supplied that limited engineering authorization on 2026-09-21 and explicitly retained legal/open-source review as a release blocker. A missing formal review is not release approval. Silence is not approval. M7.1's **ACCEPT WITH LIMITATIONS** finding alone is not release authorization.
 
 Current unresolved blockers are:
 
@@ -296,8 +296,8 @@ The approval package is complete even though these decisions remain deliberately
 
 ## 13. M7.2 status and mandatory stop
 
-No production Kotlin or Java, reducer, policy evaluator, NFC implementation, Android manifest/resource/runtime configuration, Gradle declaration, version catalog, or test was changed by M7.2. JMRTD, Bouncy Castle, Scuba, and EJBCA have not been integrated. M7.3 and Milestone 8 have not started.
+Historical M7.2 close: no production Kotlin or Java, reducer, policy evaluator, NFC implementation, Android manifest/resource/runtime configuration, Gradle declaration, version catalog, or test was changed by M7.2. At that snapshot, JMRTD, Bouncy Castle, Scuba, and EJBCA had not been integrated and M7.3 had not started. The later limited M7.3 implementation is recorded in ADR 0016 and `docs/implementation-plan.md`. Milestone 8 has not started.
 
-**M7.2 approval preparation is complete. This does NOT constitute approval to integrate JMRTD.**
+**M7.2 approval preparation is complete. The 2026-09-21 requester approval authorizes limited M7.3 engineering implementation only.**
 
-**STOP — waiting for explicit human approval before M7.3.**
+**STOP before release/distribution until every applicable formal, supply-chain, build, device, legal, and open-source gate is satisfied.**

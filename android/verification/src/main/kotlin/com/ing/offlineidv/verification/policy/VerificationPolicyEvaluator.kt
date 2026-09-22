@@ -82,6 +82,10 @@ public object VerificationPolicyEvaluator {
                 policy.requirePassiveAuthentication &&
                     VerificationEvidence.PASSIVE_AUTHENTICATION_FAILED in evidence
             ) ||
+            (
+                policy.requireChipAuthentication &&
+                    VerificationEvidence.CHIP_AUTHENTICATION_FAILED in evidence
+            ) ||
             (policy.requireFaceMatch && VerificationEvidence.FACE_MATCH_REJECTED in evidence)
 
     private fun hasUnavailableRequiredCapability(
@@ -116,6 +120,12 @@ public object VerificationPolicyEvaluator {
         if (
             policy.requirePassiveAuthentication &&
             VerificationEvidence.PASSIVE_AUTHENTICATION_VALID !in evidence
+        ) {
+            return true
+        }
+        if (
+            policy.requireChipAuthentication &&
+            VerificationEvidence.CHIP_AUTHENTICATION_SUCCEEDED !in evidence
         ) {
             return true
         }

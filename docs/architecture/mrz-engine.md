@@ -1,8 +1,8 @@
-# TD3 MRZ engine
+# TD1 and TD3 MRZ engine
 
 ## Scope and responsibility
 
-The `android:mrz` module implements deterministic, Android-framework-free Kotlin for ICAO TD3 passport machine-readable zones. It accepts candidate text from a future OCR boundary, normalizes only well-defined OCR presentation artifacts, parses the fixed layout, interprets dates relative to a caller-supplied reference date, and reports structure and checksum consistency as evidence.
+The `android:mrz` module implements deterministic, Android-framework-free Kotlin for ICAO TD3 passport and TD1 official-document machine-readable zones. The TD1 path is used by Real Android Mode for Netherlands residence permits. Each format has an explicit normalizer, parser, and validator; both report the same safe structure, date, ambiguity, and checksum evidence.
 
 MRZ validation does not establish document authenticity, chip authenticity, holder identity, or face similarity. It does not perform OCR, camera capture, NFC, orchestration, persistence, networking, logging, or UI work.
 
@@ -29,6 +29,29 @@ Indexes below are zero-based and end-exclusive.
 
 Only `A-Z`, `0-9`, and `<` are valid after normalization. TD3 input must resolve to exactly two 44-character lines.
 
+## TD1 layout
+
+TD1 input resolves to exactly three 30-character lines. The supported layout follows ICAO Doc 9303 Part 5:
+
+| Line | Range | Width | Field |
+| --- | --- | ---: | --- |
+| 1 | `0..2` | 2 | Document code |
+| 1 | `2..5` | 3 | Issuing state or organization |
+| 1 | `5..14` | 9 | Document number |
+| 1 | `14..15` | 1 | Document-number check digit |
+| 1 | `15..30` | 15 | Optional data |
+| 2 | `0..6` | 6 | Birth date (`YYMMDD`) |
+| 2 | `6..7` | 1 | Birth-date check digit |
+| 2 | `7..8` | 1 | Sex marker (`M`, `F`, or `<`) |
+| 2 | `8..14` | 6 | Expiry date (`YYMMDD`) |
+| 2 | `14..15` | 1 | Expiry-date check digit |
+| 2 | `15..18` | 3 | Nationality |
+| 2 | `18..29` | 11 | Optional data |
+| 2 | `29..30` | 1 | Composite check digit |
+| 3 | `0..30` | 30 | `SURNAME<<GIVEN<NAMES` |
+
+The supported TD1 document-code families begin with `A`, `C`, or `I`. Visa and crew-member variants and the extended-document-number convention are rejected explicitly rather than guessed.
+
 ## Normalization policy
 
 Normalization is intentionally conservative:
@@ -38,7 +61,7 @@ Normalization is intentionally conservative:
 3. Remove only ASCII spaces inside a candidate line. Tabs and other characters inside a line are rejected.
 4. Convert ASCII `a-z` to `A-Z` without locale-sensitive rules.
 5. Preserve every filler `<`.
-6. Accept exactly two complete lines, or one exactly 88-character sequence that can be split at character 44.
+6. Accept exactly two 44-character TD3 lines or three 30-character TD1 lines; the format-specific normalizer may split one exact 88- or 90-character sequence.
 7. Reject unsupported characters, extra lines, and incomplete or overlong lines. No arbitrary character is deleted.
 
 Case folding, removal of OCR-added ASCII spaces, and safe one-line splitting are returned as non-sensitive normalization metadata. Normalized lines are held only inside the module and are never included in `toString()`, errors, or validation diagnostics.
@@ -60,7 +83,7 @@ The parsed model exposes a preferred interpretation for practical callers but re
 
 Character values are `0` through `9` for digits, `10` through `35` for `A` through `Z`, and `0` for `<`. Values are multiplied by repeating weights `7, 3, 1`; the sum modulo 10 is the check digit.
 
-The engine validates document number, birth date, expiry date, optional data when present, and the composite digit. For filler-only optional data, `<` means not applicable; numeric `0` is also accepted as the calculated checksum.
+TD3 validates document number, birth date, expiry date, optional data when present, and the composite digit. TD1 validates document number, birth date, expiry date, and the line-2 composite digit. For TD3 filler-only optional data, `<` means not applicable; numeric `0` is also accepted as the calculated checksum.
 
 The composite source is constructed exactly as:
 
@@ -73,9 +96,11 @@ document number + its digit
 
 This corresponds to line-2 slices `0..10`, `13..20`, `21..28`, and `28..43`.
 
+For TD1, the composite source is line-1 positions `5..30`, line-2 positions `0..7`, `8..15`, and `18..29`, in that order.
+
 ## Name policy
 
-The 39-character name field is divided at its first `<<`. Single fillers inside each component become presentation spaces and repeated/edge spaces are removed. Components keep their MRZ uppercase spelling; the engine performs no title casing, transliteration, or locale-sensitive rewriting. Missing given names are valid when the separator is present. A missing separator is reported as a structural issue.
+The TD3 39-character or TD1 30-character name field is divided at its first `<<`. Single fillers inside each component become presentation spaces and repeated/edge spaces are removed. Components keep their MRZ uppercase spelling; the engine performs no title casing, transliteration, or locale-sensitive rewriting. Missing given names are valid when the separator is present. A missing separator is reported as a structural issue.
 
 ## Date-century policy
 
@@ -93,13 +118,13 @@ Calendar-format failures and impossible dates are separate outcomes. A resolved 
 
 Fatal normalization failures return `MrzParseResult.Rejected`. Structurally readable input returns `Parsed` even when semantic fields, dates, or check digits are invalid so callers can inspect safe issue codes. `MrzParseError` and validation results map to the existing `IdvError.Mrz` reasons without including raw data.
 
-`Td3PassportMrz`, `MrzName`, `MrzDate`, normalization results, parse results, and validation results use explicitly redacted string representations. Raw MRZ lines, names, document numbers, dates, state/nationality codes, and optional data are never rendered by those objects.
+`Td3PassportMrz`, `Td1ResidencePermitMrz`, `MrzName`, `MrzDate`, normalization results, parse results, and validation results use explicitly redacted string representations. Raw MRZ lines, names, document numbers, dates, state/nationality codes, and optional data are never rendered by those objects.
 
 ## Known limitations and non-goals
 
-- TD1, TD2, visas, residence permits, non-passport TD3 variants, and extended document-number conventions are unsupported.
+- TD2, visas, non-passport TD3 variants, TD1 extended document-number conventions, and nonstandard national layouts are unsupported.
 - Issuing state and nationality are syntactically validated as three uppercase letters; no external code-list lookup is performed.
 - OCR correction is limited to `O/0` and `I/1` in numeric date fields.
-- Century interpretation is policy-based because TD3 stores only two year digits.
+- Century interpretation is policy-based because TD1 and TD3 store only two year digits.
 - MRZ consistency is not authenticity, passive authentication, chip authentication, liveness, or identity proof.
 - The module does not retain original OCR text or normalized complete lines after parsing.

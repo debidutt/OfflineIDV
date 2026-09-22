@@ -2,7 +2,7 @@
 
 ## Status and boundary
 
-This document defines the architecture through Milestone 7. The repository/module setup, `core` contracts, pure-Kotlin TD3 MRZ engine, deterministic reducer, explicitly injected synthetic runtime, launchable Compose app, real Android CameraX/bundled-ML-Kit document path, and Android NFC/`IsoDep` transport boundary are implemented. The ePassport protocol library is blocked by security review; real DG reads, real face, and production persistence remain unavailable.
+This document defines the architecture through Milestone 7 plus the narrowly scoped TD1, M7.3 protected-access, and M7.4 chip-authenticity follow-ups. The repository/module setup, `core` contracts, pure-Kotlin TD3/TD1 MRZ engine, deterministic reducer, explicitly injected synthetic runtime, launchable Compose app, real Android CameraX/bundled-ML-Kit document path, Android NFC/`IsoDep` transport, contained PACE/BAC plus bounded-DG1 adapter, and bounded Netherlands residence-permit PA/CA path are implemented in source. DG2, real face, production persistence, broad trust coverage, and production trust governance remain unavailable. Milestone 8 has not started.
 
 ## System context
 
@@ -60,7 +60,7 @@ Milestone 5 adds `VerificationUiStateMapper`, safe `AtlasUiState` models, Materi
 
 Milestone 6 adds asynchronous sibling feature contracts, CameraX preview/still capture, session-owned in-memory images, basic deterministic quality analysis, bundled on-device ML Kit OCR, a pure TD3 candidate extractor, a real MRZ pipeline using the existing parser/mapper, and exact-token effect translation. See `docs/architecture/android-camera-ocr.md`.
 
-Milestone 7 adds finite Android NFC capability detection, Activity-rebindable reader mode, one-operation tag-session coordination, `Tag`/`IsoDep` containment, safe connection/error translation, clearable NFC artifacts, policy-free TD3 printed/chip comparison, and real-effect routing. The required library checkpoint rejects protocol packaging until exact source/logging/license/transitive review succeeds, so Atlas transmits no APDU and reports `PROTOCOL_UNSUPPORTED`. See `docs/architecture/android-epassport-nfc.md` and `docs/security/epassport-library-review.md`.
+Milestone 7 adds finite Android NFC capability detection, Activity-rebindable reader mode, one-operation tag-session coordination, `Tag`/`IsoDep` containment, safe connection/error translation, clearable NFC artifacts, policy-free printed/chip comparison, and real-effect routing. M7.3 contains the approved exact JMRTD graph behind a PACE-first/BAC adapter and reads only bounded DG1 fields. M7.4 adds bounded SOD/DG14 handling, fingerprint-pinned Netherlands residence-permit signer trust, PA, and PA-bound CA while keeping signed-data authenticity and fresh chip-key possession separate. The reducer, policy evaluator, and presentation mapper remain library/platform unaware. Distribution remains blocked by revocation/trust governance, legal/open-source, strict dependency-verification/lockfile, release packaging, independent security/PKI review, and representative-device gates. See `docs/architecture/android-epassport-nfc.md`, ADRs 0016–0017, and `docs/security/jmrtd-approval-package.md`.
 
 ## Sensitive-data lifecycle
 

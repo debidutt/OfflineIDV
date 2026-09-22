@@ -4,9 +4,9 @@ Project Atlas is an Android-first, offline identity-verification prototype. The 
 
 ## Current status
 
-Milestones 1 through 7 establish the repository foundation, pure-Kotlin TD3 MRZ engine, deterministic verification state machine, explicitly injected synthetic Demo Mode, launchable Jetpack Compose application, real Android CameraX/bundled-ML-Kit document processing, and a lifecycle-safe Android NFC/`IsoDep` transport boundary. Demo Mode remains hardware-independent. Real Android Mode never falls back to a fake engine.
+Milestones 1 through 7 establish the repository foundation, pure-Kotlin MRZ engine, deterministic verification state machine, explicitly injected synthetic Demo Mode, launchable Jetpack Compose application, real Android CameraX/bundled-ML-Kit document processing, and a lifecycle-safe Android NFC/`IsoDep` boundary. The approved M7.3 extension adds standard three-line TD1 Netherlands residence-permit checks, PACE-first/BAC protected chip access, bounded DG1 reading, and printed/DG1 consistency. The approved M7.4 extension adds bounded SOD/DG14 reads, a fingerprint-pinned Netherlands residence-permit trust snapshot, Passive Authentication, and PA-bound Chip Authentication without starting Milestone 8. Demo Mode remains hardware-independent. Real Android Mode never falls back to a fake engine.
 
-The Milestone 7 protocol-security checkpoint did not approve an ePassport library. Real Android Mode can detect NFC hardware, discover tags, recognize/connect `IsoDep`, and close safely, but it deliberately returns `PROTOCOL_UNSUPPORTED` before sending an APDU. It cannot yet read DG1/DG2 or perform BAC/PACE.
+JMRTD 0.8.8 and its reviewed exact dependency graph are contained inside `android:nfc`; only BAC/PACE, DG1/SOD/DG14, signature/provider primitives, and Chip Authentication are used. PA and CA are separate evidence, not one aggregate authenticity flag. DG2, face matching, revocation checking, broad trust coverage, and holder-identity/liveness claims remain unavailable. Legal/open-source approval, governed current trust/revocation material, strict resolved dependency verification/locking, release packaging, independent security/PKI review, and representative physical-device validation remain blockers for distribution or production-readiness claims.
 
 Do not use this foundation to make identity, authenticity, biometric, or production-security claims.
 
@@ -24,8 +24,8 @@ app-demo -> ui -> verification -> feature modules -> core
 
 - `android/core`: shared configuration, session, result/error, signal, time, and sensitive-data contracts.
 - `android/camera`: synchronous demo contracts/fakes plus asynchronous CameraX capture, memory ownership, and basic quality analysis.
-- `android/ocr`: synchronous demo contracts/fakes plus bundled on-device ML Kit OCR and policy-free TD3 candidate extraction.
-- `android/mrz`: pure-Kotlin TD3 normalization, parsing, date interpretation, and validation engine.
+- `android/ocr`: synchronous demo contracts/fakes plus bundled on-device ML Kit OCR and policy-free TD3/TD1 candidate extraction.
+- `android/mrz`: pure-Kotlin TD3/TD1 normalization, parsing, date interpretation, and validation engine.
 - `android/nfc`: synchronous demo contracts/fakes, asynchronous real-session coordination, Android NFC capability/reader-mode/`IsoDep` containment, protected chip artifacts, and policy-free printed/chip comparison.
 - `android/face`: selfie, quality, and face-comparison contracts with synthetic fakes.
 - `android/verification`: reducer, policy, session artifact stores, real/demo MRZ pipelines, serialized orchestrator, deterministic scheduler, Demo Mode effect handler, and safe runner.
@@ -76,9 +76,9 @@ Atlas Verify defaults to Success and offers the scenario selector only before a 
 
 ## Real Android Mode
 
-Select **Real Android Mode** on Welcome before starting a session. Atlas requests `CAMERA` only when the reducer requests permission, binds a live CameraX preview, captures into active-session memory, applies basic resolution/brightness/blur checks, and runs the bundled ML Kit Latin recognizer locally. A pure candidate extractor forwards likely TD3 text to the existing parser and evidence mapper.
+Select **Real Android Mode** on Welcome before starting a session. Atlas requests `CAMERA` only when the reducer requests permission, binds a live CameraX preview, captures into active-session memory, applies basic resolution/brightness/blur checks, and runs the bundled ML Kit Latin recognizer locally. Choose Passport for the TD3 route or Netherlands residence permit for strict three-line TD1 MRZ checks followed by protected chip DG1 consistency, signed-data authentication, and live-chip proof.
 
-This mode never falls back to synthetic engines. It advertises NFC only when hardware exists. Android reader mode is active only for a pending reducer-owned NFC operation while the host is resumed; `Tag` and `IsoDep` never reach state or Compose. Because the protocol review is blocked, an authorized chip reaches a safe unsupported result rather than fake data. Face capability remains unavailable. See [Android camera/OCR architecture](docs/architecture/android-camera-ocr.md) and [Android ePassport NFC architecture](docs/architecture/android-epassport-nfc.md).
+This mode never falls back to synthetic engines. Both supported document profiles advertise NFC only when hardware exists. Android reader mode is active only for a pending reducer-owned NFC operation while the host is resumed; `Tag`, `IsoDep`, APDUs, certificates, and JMRTD objects never reach verification state or Compose. The residence-permit profile requires NFC read, printed/DG1 consistency, PA, and CA but not face matching. Completion supports only the explicit evidence shown; it is not holder identity, liveness, revocation status, entitlement, or a production document-validity claim. See [Android camera/OCR architecture](docs/architecture/android-camera-ocr.md) and [Android ePassport NFC architecture](docs/architecture/android-epassport-nfc.md).
 
 ## Security baseline and limitations
 
@@ -88,19 +88,19 @@ This mode never falls back to synthetic engines. It advertises NFC only when har
 - Byte/character sensitive holders own a copy and overwrite it on explicit cleanup.
 - Verification states retain only safe evidence and opaque references; every terminal transition requests timeout cancellation, sensitive-session cleanup, and terminal-result emission.
 - Demo artifacts remain in a single-session in-memory registry and are cleared idempotently on every terminal outcome.
-- No real identity fixture, portrait, selfie, or biometric implementation is present. The real NFC implementation stops before protocol/APDU processing.
+- No real identity fixture, portrait, selfie, or biometric implementation is present. The real NFC implementation is limited to protected access, bounded DG1/SOD/DG14 handling, and the Netherlands residence-permit trust/CA profile.
 
-The current code does not implement encrypted temporary persistence, production lifecycle cleanup, screenshot handling, root/debug mitigations, BAC/PACE, DG1/DG2 reading, real passive authentication, chip authentication, or a complete threat model. Demo evidence is synthetic and must not support production claims. These controls are not optional for a production assessment.
+The current code does not implement encrypted temporary persistence, production lifecycle cleanup, screenshot handling, root/debug mitigations, DG2 reading, revocation checking, broad CSCA coverage, Active/Terminal Authentication, or face comparison. Demo evidence is synthetic and must not support production claims. M7.3/M7.4 dependency, trust, legal, release, security, and device gates and these controls are not optional for a production assessment.
 
 ## Roadmap
 
 1. Repository foundation — complete.
-2. Pure-Kotlin TD3 MRZ engine and tests — complete.
+2. Pure-Kotlin TD3 MRZ engine and tests — complete; TD1 residence-permit support added as a later validation extension.
 3. Deterministic verification state machine and orchestration contracts — complete.
 4. Injected synthetic demo engines and integration tests — complete.
 5. Accessible Compose demo application — complete.
 6. CameraX and bundled ML Kit document path — complete.
-7. Android NFC/`IsoDep` transport integration — implemented; ePassport protocol selection blocked by security review.
+7. Android NFC integration — transport, limited PACE/BAC plus DG1 M7.3 integration, and bounded Netherlands PA/CA M7.4 integration implemented with trust/release/device gates still open.
 8. Face module and reviewed-engine extension point.
 9. Secure storage, cleanup, expiry, and threat-model hardening.
 10. Airplane-mode conference polish and final documentation.

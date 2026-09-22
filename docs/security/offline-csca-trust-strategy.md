@@ -1,6 +1,27 @@
-# Offline CSCA trust strategy (Milestone 7.2)
+# Offline CSCA trust strategy (Milestone 7.2 with M7.4 prototype addendum)
 
-Status: approval-level architecture for a future offline trust implementation. No CSCA trust store, ingestion tool, network client, certificate policy, or Passive Authentication implementation is created or approved here.
+Status: the approval-level architecture remains the production target. M7.4 implements the explicitly approved, narrow Netherlands residence-permit prototype snapshot described below. It is not a governed multi-issuer trust store and is not distribution approval.
+
+## 0. M7.4 implemented prototype snapshot
+
+The requester authorized a bounded Netherlands-only, offline, fail-closed engineering implementation on 2026-09-22. The source bundles one official Netherlands residence-permit CSCA certificate and no runtime network client:
+
+| Field | Value |
+| --- | --- |
+| Source | Netherlands PKD, “Download all Dutch CSCA Certificates as ZIP file” from `https://www.npkd.nl/` |
+| Intended profile | Netherlands residence permit only |
+| CSCA | Subject/issuer serial-number attribute 4; certificate serial `02D4` |
+| Certificate validity | 2017-08-17T00:00:00Z through 2030-08-26T00:00:00Z |
+| SHA-256 pin | `0F:D7:E3:BE:92:3B:DB:E8:3B:4E:4B:08:E2:59:74:65:5B:5E:55:F6:61:44:8B:9A:FA:A4:A7:8F:76:0E:D2:BC` |
+| Atlas effective/stale window | 2026-09-22 inclusive through 2027-01-22 exclusive |
+| Runtime retrieval | None |
+| Revocation | Not evaluated; no CRL is bundled |
+
+The runtime fingerprint-pins and self-verifies the anchor, checks the current clock against the snapshot window, accepts only a direct DSC signature under that anchor, validates certificate time/basic constraints/key usage and reviewed key/signature policy, and otherwise returns a finite non-valid observation. It never consults Android system roots or chip-supplied roots.
+
+The official CRL endpoint exposed by the Netherlands PKD could not be retrieved in the implementation environment. Therefore this prototype's `VALID` observation is narrowly defined as: the requested DG hashes match SOD, the SOD signature and signer identifier validate, and the DSC is current and directly signed by the pinned current CSCA. It does not mean “not revoked,” complete Master List validation, broad Netherlands coverage, or production PKI approval. Product UI keeps this as `Signed chip data`, separate from `Live chip proof` and from final outcome.
+
+This addendum does not waive the governance, redistribution, CRL, rollover/link, rollback, coverage, ingestion, independent-review, fuzz, release, and device requirements in the rest of this document. The snapshot must fail closed after its stale date and must be replaced or governed before distribution.
 
 ## 1. Objective and non-claims
 
@@ -172,8 +193,8 @@ Audit records must be immutable, access-controlled, and sufficient to reconstruc
 
 ## 13. Approval blockers
 
-Before M7.3 can report `SignerTrust.TRUSTED`, reviewers must approve the root ceremony, source and redistribution rights, snapshot format/signing keys, CSCA/link/reference-time rules, revocation policy, country coverage, maximum age, update/emergency owner and cadence, rollback handling, audit retention, safe evidence mapping, and validation evidence.
+Before a production or distributed build can report governed `SignerTrust.TRUSTED`, reviewers must approve the root ceremony, source and redistribution rights, snapshot format/signing keys, CSCA/link/reference-time rules, revocation policy, country coverage, maximum age, update/emergency owner and cadence, rollback handling, audit retention, safe evidence mapping, and validation evidence.
 
 If those are not approved or an in-scope issuer is missing/stale, Atlas may still expose separately valid DG-hash/SOD-signature evidence if implemented and approved, but signer trust remains unknown/stale/uncovered. It must never claim Passive Authentication is wholly valid on that basis.
 
-**The offline CSCA trust store is not implemented. Runtime networking remains prohibited.**
+**Only the M7.4 single-anchor prototype snapshot is implemented. Governed production trust and revocation are not. Runtime networking remains prohibited.**

@@ -182,7 +182,7 @@ public class RealVerificationEffectHandlerTest {
             )
         harness.startNfcRead()
 
-        harness.nfcCallbacks.single()(NfcReadResult.Read(ChipDataArtifact(validMrz())))
+        harness.nfcCallbacks.single()(NfcReadResult.Read(validChip()))
 
         val terminal = harness.orchestrator.state as Verified
         assertTrue(VerificationEvidence.NFC_CHIP_READ in terminal.summary.evidence)
@@ -219,7 +219,7 @@ public class RealVerificationEffectHandlerTest {
         val late = harness.nfcCallbacks.single()
 
         harness.orchestrator.cancel()
-        late(NfcReadResult.Read(ChipDataArtifact(validMrz())))
+        late(NfcReadResult.Read(validChip()))
 
         assertTrue(harness.orchestrator.state is Cancelled)
         assertTrue(harness.handler.cleanupComplete)
@@ -235,7 +235,7 @@ public class RealVerificationEffectHandlerTest {
             )
         harness.startNfcRead()
 
-        harness.nfcCallbacks.single()(NfcReadResult.Read(ChipDataArtifact(validMrz("Z98Y76543"))))
+        harness.nfcCallbacks.single()(NfcReadResult.Read(validChip("Z98Y76543")))
 
         val terminal = harness.orchestrator.state as Rejected
         assertTrue(VerificationEvidence.PRINTED_CHIP_DATA_MISMATCH in terminal.summary.evidence)
@@ -254,7 +254,7 @@ public class RealVerificationEffectHandlerTest {
             )
         harness.startNfcRead()
 
-        harness.nfcCallbacks.single()(NfcReadResult.Read(ChipDataArtifact(validMrz("Z98Y76543"))))
+        harness.nfcCallbacks.single()(NfcReadResult.Read(validChip("Z98Y76543")))
 
         val terminal = harness.orchestrator.state as Verified
         assertTrue(VerificationEvidence.PRINTED_CHIP_DATA_MISMATCH in terminal.summary.evidence)
@@ -403,6 +403,9 @@ public class RealVerificationEffectHandlerTest {
     private fun RecoveryRequired.canRetry(): Boolean = retryDecision.name == "RETRY_AVAILABLE"
 
     private companion object {
+        fun validChip(documentNumber: String = "A12B34567"): ChipDataArtifact =
+            ChipDataArtifact.fromDg1Fields(documentNumber, "UTO", "900101", "301231")
+
         fun validMrz(documentNumber: String = "A12B34567"): String {
             val birthDate = "900101"
             val expiryDate = "301231"

@@ -30,6 +30,21 @@ public class AtlasDemoControllerTest {
     }
 
     @Test
+    public fun `real mode exposes Netherlands residence permit instructions before runtime creation`() {
+        val controller = controller()
+        controller.dispatch(AtlasUiAction.SelectRuntimeMode(AtlasRuntimeMode.REAL_ANDROID))
+        controller.dispatch(AtlasUiAction.Start)
+
+        assertEquals(AtlasUiState.DocumentSelection, controller.state)
+        assertEquals(null, controller.activeRealRuntime)
+
+        controller.dispatch(AtlasUiAction.SelectResidencePermit)
+
+        assertEquals(AtlasUiState.ResidencePermitInstructions, controller.state)
+        assertEquals(null, controller.activeRealRuntime)
+    }
+
+    @Test
     public fun `runtime mode cannot change after demo session starts`() {
         val controller = controller()
         controller.dispatch(AtlasUiAction.Start)

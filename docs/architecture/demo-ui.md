@@ -57,7 +57,7 @@ The mapper exhaustively projects every reducer state:
 | `RecoveryRequired` | Recovery with reducer-owned retry availability |
 | Six terminal states | Outcome-specific result |
 
-Welcome, scenario selection, and passport instructions are presentation-only surfaces. Passport instructions intentionally delay `PassportSelected` until the user presses Continue; they do not alter the reducer sequence. National ID and residence permit are visibly disabled and labelled “Coming later.”
+Welcome, scenario selection, passport instructions, and residence-permit instructions are presentation-only surfaces. Instructions delay the corresponding selection event until the user presses Continue; they do not alter reducer sequencing. National ID remains disabled. Netherlands residence permits are enabled only in Real Android Mode and are visibly disclosed as three-line TD1 document checks without NFC, face, identity, or authenticity claims.
 
 Progress always uses the five safe stages Document, MRZ, Chip, Face, and Decision. Each stage includes text and a symbol for Complete, Current, Upcoming, or Needs attention, so color is never the only signal.
 
@@ -113,4 +113,4 @@ Scenario definitions remain observation-only. `DemoVerificationFactory` owns fak
 
 ## Runtime selection boundary
 
-Milestones 6 and 7 select document capture, OCR, and NFC transport adapters behind the existing feature/effect boundaries. They do not change the UI-to-event direction or let Compose instantiate CameraX, ML Kit, `NfcAdapter`, `Tag`, or `IsoDep`. The real binding preserves exact operation tokens, serialized dispatch, and cooperative lifecycle cancellation. It advertises NFC only when hardware exists and never substitutes its fake. The reviewed ePassport protocol, face, persistence, and production security work remain unavailable.
+Milestones 6, 7, and the approved M7.3/M7.4 extensions select document capture, OCR, NFC transport, the contained PACE/BAC/DG1 adapter, and bounded Netherlands PA/CA behind existing feature/effect boundaries. They do not change the UI-to-event direction or let Compose instantiate CameraX, ML Kit, `NfcAdapter`, `Tag`, `IsoDep`, Scuba, JMRTD, or cryptographic providers. The real binding preserves exact operation tokens, serialized dispatch, and cooperative lifecycle cancellation. It advertises NFC only when hardware exists and never substitutes its fake. The shared mapper renders implementation-neutral `Signed chip data` and `Live chip proof` observations without knowing runtime mode. DG2, face, persistence, broad trust/revocation coverage, and production security hardening remain unavailable.

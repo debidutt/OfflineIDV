@@ -13,12 +13,16 @@ import com.ing.offlineidv.verification.model.AwaitingSelfie
 import com.ing.offlineidv.verification.model.CameraReady
 import com.ing.offlineidv.verification.model.DocumentSelection
 import com.ing.offlineidv.verification.model.RecoveryRequired
+import com.ing.offlineidv.verification.model.RetryCounter
 import com.ing.offlineidv.verification.model.TerminalState
 import com.ing.offlineidv.verification.model.VerificationArtifactReference
 import com.ing.offlineidv.verification.model.VerificationEvent
+import com.ing.offlineidv.verification.model.VerificationEvidence
 import com.ing.offlineidv.verification.model.VerificationOutcome
 import com.ing.offlineidv.verification.model.VerificationPolicy
 import com.ing.offlineidv.verification.model.VerificationState
+import com.ing.offlineidv.verification.model.VerificationTerminalSummary
+import com.ing.offlineidv.verification.model.Verified
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -43,14 +47,14 @@ public class VerificationUiStateMapperTest {
     @Test
     public fun `document capture and quality states map to document processing`() {
         val mapped = mappedSuccessStates()
-        assertTrue(mapped.any { it is AtlasUiState.Processing && it.title == "Capturing passport" })
+        assertTrue(mapped.any { it is AtlasUiState.Processing && it.title == "Capturing document" })
         assertTrue(mapped.any { it is AtlasUiState.Processing && it.title == "Checking image quality" })
     }
 
     @Test
     public fun `ocr and mrz states map to grouped safe processing`() {
         val titles = mappedSuccessStates().filterIsInstance<AtlasUiState.Processing>().map { it.title }
-        assertTrue("Reading passport" in titles)
+        assertTrue("Reading document" in titles)
         assertTrue("Finding the MRZ" in titles)
         assertTrue("Checking the MRZ" in titles)
     }
@@ -66,16 +70,16 @@ public class VerificationUiStateMapperTest {
     @Test
     public fun `chip states map to chip progress`() {
         val titles = mappedSuccessStates().filterIsInstance<AtlasUiState.Processing>().map { it.title }
-        assertTrue("Reading passport chip" in titles)
+        assertTrue("Reading document chip" in titles)
         assertTrue("Checking chip signals" in titles)
-        assertTrue("Comparing passport signals" in titles)
+        assertTrue("Comparing document signals" in titles)
     }
 
     @Test
     public fun `awaiting selfie maps safe completed evidence`() {
         val mapped = mapSuccessState<AwaitingSelfie>() as AtlasUiState.Selfie
 
-        assertTrue(mapped.evidence.any { it.title == "Passport chip" })
+        assertTrue(mapped.evidence.any { it.title == "Document chip" })
     }
 
     @Test
@@ -135,9 +139,33 @@ public class VerificationUiStateMapperTest {
             )
 
         assertEquals(optional.evidence, required.evidence)
-        assertTrue(optional.evidence.any { it.title == "Chip authentication" })
+        assertTrue(optional.evidence.any { it.title == "Signed chip data" })
         assertEquals(VerificationOutcome.VERIFIED, optional.outcome)
         assertEquals(VerificationOutcome.REJECTED, required.outcome)
+    }
+
+    @Test
+    public fun `signed data and live chip proof render as separate neutral evidence`() {
+        val session = (IdvSessionId.parse("atlas_chip_auth_ui") as IdvResult.Success).value
+        val state =
+            Verified(
+                VerificationTerminalSummary(
+                    sessionId = session,
+                    outcome = VerificationOutcome.VERIFIED,
+                    evidence =
+                        setOf(
+                            VerificationEvidence.PASSIVE_AUTHENTICATION_VALID,
+                            VerificationEvidence.CHIP_AUTHENTICATION_SUCCEEDED,
+                        ),
+                    retries = RetryCounter.EMPTY,
+                ),
+            )
+
+        val mapped = VerificationUiStateMapper.map(state) as AtlasUiState.Result
+
+        assertTrue(mapped.evidence.any { it.title == "Signed chip data" })
+        assertTrue(mapped.evidence.any { it.title == "Live chip proof" })
+        assertFalse(mapped.toString().contains("JMRTD"))
     }
 
     @Test

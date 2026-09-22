@@ -32,6 +32,7 @@ public enum class MrzValidationIssueType(
     AMBIGUOUS_CHARACTER("mrz.ambiguity.character", MrzIssueSeverity.WARNING),
     AMBIGUOUS_CENTURY("mrz.ambiguity.century", MrzIssueSeverity.WARNING),
     MISSING_NAME_SEPARATOR("mrz.name.missing_separator", MrzIssueSeverity.ERROR),
+    UNSUPPORTED_TD1_VARIANT("mrz.structure.unsupported_td1_variant", MrzIssueSeverity.ERROR),
     UNSUPPORTED_TD3_VARIANT("mrz.structure.unsupported_td3_variant", MrzIssueSeverity.ERROR),
 }
 
@@ -106,7 +107,7 @@ public class CheckDigitResult(
     override fun toString(): String = "CheckDigitResult(field=$field, status=$status)"
 }
 
-/** Aggregated format/checksum evidence for one TD3 candidate. */
+/** Aggregated format/checksum evidence for one supported MRZ candidate. */
 public class MrzValidationResult(
     public val structurallyValid: Boolean,
     checkDigits: Map<MrzField, CheckDigitResult>,
@@ -137,6 +138,8 @@ public class MrzValidationResult(
         val types = issues.map { it.type }.toSet()
         val reason =
             when {
+                MrzValidationIssueType.UNSUPPORTED_TD1_VARIANT in types -> MrzFailure.UNSUPPORTED_FORMAT
+
                 MrzValidationIssueType.UNSUPPORTED_TD3_VARIANT in types -> MrzFailure.UNSUPPORTED_FORMAT
 
                 MrzValidationIssueType.INVALID_DATE_FORMAT in types ||

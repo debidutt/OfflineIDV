@@ -1,6 +1,6 @@
 # ePassport protocol investigation (Milestone 7.1)
 
-Evidence snapshot: 2026-09-01. This is an engineering and security assessment, not legal advice or an implementation approval.
+Evidence snapshot: 2026-09-01. This is an engineering and security assessment, not legal advice. Later requester authorizations permitted the ADR 0016 protected-access/DG1 engineering subset on 2026-09-21 and the bounded ADR 0017 Netherlands residence-permit PA/CA subset on 2026-09-22; they did not waive legal/open-source, trust/revocation, or final security/release/device gates. Statements below about the current repository/runtime describe the historical M7.1 snapshot.
 
 ## 1. Executive summary
 

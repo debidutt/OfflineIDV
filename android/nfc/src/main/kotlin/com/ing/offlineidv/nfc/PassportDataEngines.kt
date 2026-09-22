@@ -8,19 +8,20 @@ public object PassportChipValidationEngine : ChipValidationEngine {
                 dg1Available = artifact.hasDg1,
                 dg2Available = artifact.hasDg2,
                 passiveAuthentication = artifact.passiveAuthentication,
+                chipAuthentication = artifact.chipAuthentication,
                 portrait = artifact.portrait(),
             ),
         )
 }
 
-/** Compares selected TD3 identity fields and returns no compared value or product decision. */
-public object Td3PrintedChipComparisonEngine : PrintedChipComparisonEngine {
+/** Compares the selected TD1/TD3 identity fields and returns no value or product decision. */
+public object MrzPrintedChipComparisonEngine : PrintedChipComparisonEngine {
     override fun compare(
         printed: PrintedPassportData,
         chip: ChipDataArtifact,
     ): PrintedChipComparisonResult {
-        val printedFields = printed.useValue(::extractTd3Fields)
-        val chipFields = chip.useValue(::extractTd3Fields)
+        val printedFields = printed.fields()
+        val chipFields = chip.useValue { value -> MrzComparisonFields.decode(value) }
         if (printedFields == null || chipFields == null) return PrintedChipComparisonResult.Inconclusive
         return if (printedFields == chipFields) {
             PrintedChipComparisonResult.Match
@@ -28,28 +29,7 @@ public object Td3PrintedChipComparisonEngine : PrintedChipComparisonEngine {
             PrintedChipComparisonResult.Mismatch
         }
     }
-
-    private fun extractTd3Fields(value: String): Td3ComparisonFields? {
-        val normalized = value.filterNot(Char::isWhitespace)
-        if (normalized.length != TD3_LENGTH) return null
-        val line2 = normalized.substring(TD3_LINE_LENGTH)
-        return Td3ComparisonFields(
-            documentNumber = line2.substring(0, 9),
-            nationality = line2.substring(10, 13),
-            dateOfBirth = line2.substring(13, 19),
-            expiryDate = line2.substring(21, 27),
-        )
-    }
-
-    private data class Td3ComparisonFields(
-        val documentNumber: String,
-        val nationality: String,
-        val dateOfBirth: String,
-        val expiryDate: String,
-    ) {
-        override fun toString(): String = "Td3ComparisonFields([REDACTED])"
-    }
-
-    private const val TD3_LINE_LENGTH: Int = 44
-    private const val TD3_LENGTH: Int = TD3_LINE_LENGTH * 2
 }
+
+/** Compatibility alias retained for existing callers; comparison is now MRZ-format-neutral. */
+public object Td3PrintedChipComparisonEngine : PrintedChipComparisonEngine by MrzPrintedChipComparisonEngine

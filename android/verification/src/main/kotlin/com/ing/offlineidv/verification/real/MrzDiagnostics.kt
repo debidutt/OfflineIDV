@@ -9,6 +9,7 @@ public enum class MrzDiagnosticStatus {
 
 /** Safe format classification for OCR-to-MRZ device diagnostics. */
 public enum class MrzDiagnosticFormat {
+    TD1,
     TD3,
     UNKNOWN,
 }

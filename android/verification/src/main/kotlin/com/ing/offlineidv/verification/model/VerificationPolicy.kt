@@ -11,6 +11,7 @@ public data class VerificationPolicy(
     public val requirePrintedChipConsistency: Boolean = true,
     public val requireFaceMatch: Boolean = true,
     public val requirePassiveAuthentication: Boolean = false,
+    public val requireChipAuthentication: Boolean = false,
     public val allowRetry: Boolean = true,
 ) {
     init {
@@ -19,6 +20,9 @@ public data class VerificationPolicy(
         }
         require(!requirePassiveAuthentication || requireNfcRead) {
             "Passive authentication cannot be required without an NFC read."
+        }
+        require(!requireChipAuthentication || requirePassiveAuthentication) {
+            "Chip authentication cannot be required without passive authentication."
         }
     }
 }
@@ -100,6 +104,7 @@ public enum class VerificationCapability {
     NFC,
     FACE_COMPARISON,
     PASSIVE_AUTHENTICATION,
+    CHIP_AUTHENTICATION,
 }
 
 /** Immutable capability set supplied through deterministic transition context. */

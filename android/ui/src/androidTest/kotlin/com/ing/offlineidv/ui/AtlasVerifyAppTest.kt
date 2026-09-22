@@ -3,6 +3,7 @@ package com.ing.offlineidv.ui
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -42,6 +43,20 @@ public class AtlasVerifyAppTest {
     }
 
     @Test
+    public fun realModeDisclosesResidencePermitNfcScopeOnWelcome() {
+        show(AtlasUiState.Welcome, AtlasRuntimeMode.REAL_ANDROID)
+
+        composeRule
+            .onNodeWithText(
+                "Residence permits use three-line TD1 checks followed by protected NFC DG1 " +
+                    "consistency checking; face checks are not performed.",
+            ).assertExists()
+        composeRule
+            .onNodeWithText("DG1 CONSISTENCY ONLY — NO CHIP-AUTHENTICITY OR FACE CHECK")
+            .assertExists()
+    }
+
+    @Test
     public fun startButtonDispatchesStart() {
         val actions = show(AtlasUiState.Welcome)
 
@@ -67,12 +82,37 @@ public class AtlasVerifyAppTest {
     }
 
     @Test
-    public fun futureDocumentsAreDisabledAndLabelled() {
+    public fun demoModeKeepsNonPassportDocumentsUnavailable() {
         show(AtlasUiState.DocumentSelection)
 
         composeRule.onNodeWithTag(AtlasTestTags.NATIONAL_ID).assertIsNotEnabled()
         composeRule.onNodeWithTag(AtlasTestTags.RESIDENCE_PERMIT).assertIsNotEnabled()
-        composeRule.onAllNodesWithText("Coming later").fetchSemanticsNodes().also { assertEquals(2, it.size) }
+        composeRule.onAllNodesWithText("Coming later").fetchSemanticsNodes().also { assertEquals(1, it.size) }
+        composeRule.onNodeWithText("Available in Real Android Mode").assertExists()
+    }
+
+    @Test
+    public fun realModeEnablesNetherlandsResidencePermit() {
+        val actions = show(AtlasUiState.DocumentSelection, AtlasRuntimeMode.REAL_ANDROID)
+
+        composeRule.onNodeWithTag(AtlasTestTags.RESIDENCE_PERMIT).assertIsEnabled().performClick()
+
+        assertEquals(listOf(AtlasUiAction.SelectResidencePermit), actions)
+        composeRule
+            .onNodeWithText("Netherlands permit · three-line TD1 MRZ · NFC chip consistency")
+            .assertExists()
+    }
+
+    @Test
+    public fun residencePermitInstructionsDiscloseLimitedNfcScope() {
+        show(AtlasUiState.ResidencePermitInstructions, AtlasRuntimeMode.REAL_ANDROID)
+
+        composeRule.onNodeWithText("Make sure all three MRZ lines are visible.").assertExists()
+        composeRule
+            .onNodeWithText(
+                "After the MRZ check, this flow reads bounded DG1 identity fields from the contactless chip " +
+                    "and compares them with the printed MRZ. Face and chip-authenticity checks are not performed.",
+            ).assertExists()
     }
 
     @Test
@@ -140,8 +180,8 @@ public class AtlasVerifyAppTest {
             )
         }
 
-        composeRule.onNodeWithText("Read passport chip").assertExists()
-        composeRule.onNodeWithText("Hold the top/back of your phone against the passport.").assertExists()
+        composeRule.onNodeWithText("Read document chip").assertExists()
+        composeRule.onNodeWithText("Hold the top/back of your phone against the contactless document.").assertExists()
         composeRule.onNodeWithContentDescription(AtlasAccessibility.NFC_READER).assertExists()
         composeRule.onNodeWithText("Simulated NFC — no NFC hardware used. No authenticity claim is made.").assertDoesNotExist()
     }
@@ -158,7 +198,7 @@ public class AtlasVerifyAppTest {
         }
 
         composeRule.onNodeWithText("NFC is turned off. Enable NFC in Android settings, then return to continue.").assertExists()
-        composeRule.onNodeWithText("Read passport chip").assertExists()
+        composeRule.onNodeWithText("Read document chip").assertExists()
     }
 
     @Test
@@ -281,9 +321,12 @@ public class AtlasVerifyAppTest {
         composeRule.onNodeWithText("Attention · MRZ check digits").assertTextContains("Attention")
     }
 
-    private fun show(state: AtlasUiState): MutableList<AtlasUiAction> {
+    private fun show(
+        state: AtlasUiState,
+        runtimeMode: AtlasRuntimeMode = AtlasRuntimeMode.DEMO,
+    ): MutableList<AtlasUiAction> {
         val actions = mutableListOf<AtlasUiAction>()
-        composeRule.setContent { AtlasVerifyApp(state = state, onAction = actions::add) }
+        composeRule.setContent { AtlasVerifyApp(state = state, onAction = actions::add, runtimeMode = runtimeMode) }
         return actions
     }
 

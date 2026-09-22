@@ -19,6 +19,9 @@ public enum class VerificationEvidence {
     PASSIVE_AUTHENTICATION_VALID,
     PASSIVE_AUTHENTICATION_FAILED,
     PASSIVE_AUTHENTICATION_NOT_PERFORMED,
+    CHIP_AUTHENTICATION_SUCCEEDED,
+    CHIP_AUTHENTICATION_FAILED,
+    CHIP_AUTHENTICATION_NOT_PERFORMED,
     SELFIE_QUALITY_ACCEPTED,
     SELFIE_QUALITY_REJECTED,
     FACE_MATCH_ACCEPTED,
@@ -54,13 +57,24 @@ public enum class VerificationTerminalReason {
     SESSION_EXPIRED,
 }
 
-/** Passive-authentication evidence reported by a future NFC boundary. */
+/** Signed LDS-data observation reported by the NFC boundary. */
 public enum class PassiveAuthenticationStatus {
     VALID,
     FAILED,
     NOT_PERFORMED,
     UNAVAILABLE,
     UNSUPPORTED,
+    TECHNICAL_ERROR,
+}
+
+/** Fresh chip-key possession evidence, separate from signed-data authenticity. */
+public enum class ChipAuthenticationStatus {
+    SUCCEEDED,
+    AUTHENTICATION_FAILED,
+    NOT_PERFORMED,
+    PREREQUISITE_MISSING,
+    UNSUPPORTED,
+    SECURE_MESSAGING_FAILED,
     TECHNICAL_ERROR,
 }
 

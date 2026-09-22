@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.nfc.NfcAdapter
 import android.nfc.NfcManager
 import android.nfc.Tag
-import android.nfc.TagLostException
 import android.nfc.tech.IsoDep
 import com.ing.offlineidv.core.concurrency.CancellableOperation
 import com.ing.offlineidv.core.error.IdvError
@@ -18,7 +17,6 @@ import com.ing.offlineidv.nfc.NfcTagDiscovery
 import com.ing.offlineidv.nfc.NfcTagDiscoveryResult
 import com.ing.offlineidv.nfc.PassportAccessKey
 import com.ing.offlineidv.nfc.PassportChipSession
-import java.io.IOException
 
 /** Android capability adapter that distinguishes absent, disabled, and available NFC. */
 public class AndroidNfcCapabilityDetector(
@@ -56,6 +54,7 @@ public class AndroidNfcTagDiscovery(
 
     init {
         require(connectionTimeoutMillis > 0) { "connectionTimeoutMillis must be positive" }
+        JmrtdLoggingContainment.install()
     }
 
     /** Attaches the currently resumed host; a pending read enables reader mode immediately. */
@@ -209,34 +208,30 @@ public class AndroidNfcTagDiscovery(
 }
 
 /**
- * Owns one `IsoDep` connection and stops at the unapproved protocol boundary.
- *
- * No APDU is constructed or transmitted by Project Atlas.
+ * Owns one `IsoDep` lease and delegates only protected access plus bounded DG1 reading.
  */
 internal class AndroidPassportChipSession(
     private val isoDep: IsoDep,
     private val connectionTimeoutMillis: Int,
+    private val protocolReader: JmrtdPassportProtocolReader = JmrtdPassportProtocolReader(),
 ) : PassportChipSession {
     @Volatile private var closed: Boolean = false
 
+    @Volatile private var activeBridge: IsoDepCardServiceBridge? = null
+
     override fun read(accessKey: PassportAccessKey): NfcReadResult {
+        if (closed) return NfcReadResult.Failed(IdvError.Nfc(NfcFailure.TAG_LOST))
+        val bridge = IsoDepCardServiceBridge(isoDep, connectionTimeoutMillis)
+        activeBridge = bridge
         return try {
-            if (closed) return NfcReadResult.Failed(IdvError.Nfc(NfcFailure.TAG_LOST))
-            isoDep.timeout = connectionTimeoutMillis
-            isoDep.connect()
-            if (!isoDep.isConnected) {
-                NfcReadResult.Failed(IdvError.Nfc(NfcFailure.CONNECTION_TIMEOUT))
+            if (closed) {
+                bridge.close()
+                NfcReadResult.Failed(IdvError.Nfc(NfcFailure.TAG_LOST))
             } else {
-                // The access key is intentionally not opened until a protocol library passes review.
-                NfcReadResult.Failed(IdvError.Nfc(NfcFailure.PROTOCOL_UNSUPPORTED))
+                protocolReader.read(bridge, accessKey)
             }
-        } catch (_: TagLostException) {
-            NfcReadResult.Failed(IdvError.Nfc(NfcFailure.TAG_LOST))
-        } catch (_: IOException) {
-            NfcReadResult.Failed(IdvError.Nfc(NfcFailure.READ_FAILED))
-        } catch (_: RuntimeException) {
-            NfcReadResult.Failed(IdvError.Nfc(NfcFailure.TECHNICAL_ERROR))
         } finally {
+            activeBridge = null
             close()
         }
     }
@@ -244,6 +239,11 @@ internal class AndroidPassportChipSession(
     override fun close() {
         if (closed) return
         closed = true
-        runCatching { isoDep.close() }
+        activeBridge?.close()
+        try {
+            isoDep.close()
+        } catch (_: Exception) {
+            // Platform errors are contained; close remains idempotent.
+        }
     }
 }

@@ -2,6 +2,8 @@ package com.ing.offlineidv.verification.real
 
 import com.ing.offlineidv.core.result.IdvResult
 import com.ing.offlineidv.core.session.IdvSessionId
+import com.ing.offlineidv.nfc.PassportAccessKey
+import com.ing.offlineidv.nfc.PrintedPassportData
 import com.ing.offlineidv.ocr.OcrTextArtifact
 import com.ing.offlineidv.verification.artifact.SessionArtifactStore
 import com.ing.offlineidv.verification.model.VerificationArtifactKind
@@ -20,6 +22,24 @@ public class RealMrzPipelineTest {
         assertTrue(VerificationEvidence.MRZ_STRUCTURE_VALID in result.summary.evidence)
         assertTrue(VerificationEvidence.MRZ_CHECK_DIGITS_VALID in result.summary.evidence)
         assertEquals(3, fixture.store.size)
+        val printed =
+            fixture.store
+                .resolve(
+                    result.printedDataReference,
+                    VerificationArtifactKind.MRZ_PRINTED_DATA,
+                    PrintedPassportData::class.java,
+                ).success()
+        val accessKey =
+            fixture.store
+                .resolve(
+                    result.accessKeyReference,
+                    VerificationArtifactKind.MRZ_ACCESS_KEY,
+                    PassportAccessKey::class.java,
+                ).success()
+        assertEquals(24, printed.useValue(String::length))
+        assertEquals(21, accessKey.useValue(String::length))
+        assertTrue(printed.toString().contains("[REDACTED]"))
+        assertTrue(accessKey.toString().contains("[REDACTED]"))
         with(fixture.diagnostics.single()) {
             assertTrue(ocrSuccessful)
             assertEquals(2, textBlockCount)

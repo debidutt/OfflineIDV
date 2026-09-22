@@ -53,18 +53,24 @@ public class RealEnginePolicyIsolationTest {
                 "android.util.Log",
                 "Log.",
                 "println(",
-                "transceive(",
-                "CommandAPDU",
-                "ResponseAPDU",
                 "Cipher.getInstance",
                 "Mac.getInstance",
                 "MessageDigest.getInstance",
                 "SecretKey",
-                "doBAC",
-                "doPACE",
+                "addAPDUListener",
+                "notifyExchangedAPDU",
+                "doAA",
+                "doCA",
+                "doTA",
             ),
         )
-        assertTrue(nfcRealSource().contains("PROTOCOL_UNSUPPORTED"))
+        assertTrue(nfcRealSource().contains("JmrtdPassportProtocolReader"))
+        assertContained("IsoDepCardServiceBridge.kt", listOf("CommandAPDU", "ResponseAPDU", "isoDep.transceive"))
+        assertContained(
+            "JmrtdPassportProtocolReader.kt",
+            listOf("service.doBAC", "service.doPACE"),
+        )
+        assertContained("PassportChipAuthenticity.kt", listOf("service.doEACCA"))
     }
 
     @Test
@@ -96,6 +102,23 @@ public class RealEnginePolicyIsolationTest {
     private fun nfcRealSource(): String = sourceUnder("android/nfc/src/main/kotlin/com/ing/offlineidv/nfc/real")
 
     private fun nfcProductionSource(): String = sourceUnder("android/nfc/src/main/kotlin/com/ing/offlineidv/nfc")
+
+    private fun assertContained(
+        allowedFile: String,
+        tokens: List<String>,
+    ) {
+        val directory = locate("android/nfc/src/main/kotlin/com/ing/offlineidv/nfc/real")
+        val allowed = File(directory, allowedFile).readText()
+        val remaining =
+            directory
+                .walkTopDown()
+                .filter { it.isFile && it.extension == "kt" && it.name != allowedFile }
+                .joinToString("\n") { it.readText() }
+        tokens.forEach { token ->
+            assertTrue("allowed adapter must contain $token", allowed.contains(token))
+            assertFalse("$token escaped $allowedFile", remaining.contains(token))
+        }
+    }
 
     private fun sourceUnder(path: String): String =
         locate(path)

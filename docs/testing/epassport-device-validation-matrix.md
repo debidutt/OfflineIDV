@@ -1,10 +1,10 @@
-# ePassport real-device and passport validation matrix (Milestone 7.2)
+# ePassport real-device and passport validation matrix (Milestone 7.2 through M7.4)
 
-Status: planned validation for a future, separately approved M7.3. No row in this document was executed by M7.2. Real identity data must never be committed.
+Status: planned validation for the approved, source-implemented M7.3 protected-access subset and M7.4 Netherlands chip-authenticity subset. No protocol/device row was executed in the Codex sandbox. Real identity data must never be committed.
 
 ## 1. Entry gates and data-handling rules
 
-M6 camera/OCR and M7 NFC transport debt should be executed **before M7.3 implementation as blocking entry gates**. Protocol debugging must not begin on an unvalidated camera/artifact/NFC lifecycle foundation.
+M6 camera/OCR and M7 NFC transport debt remain blocking release gates. Requester authorization allowed bounded M7.3/M7.4 source implementation to proceed, but did not waive any device, trust/revocation, privacy, security, or release criterion.
 
 Use only organization-authorized, runtime-presented test passports or approved eMRTD test cards. Never copy MRZ, document number, name, birth/expiry date, nationality, portrait, DG, SOD, certificate subject/serial, APDU, key, screenshot, logcat, heap dump, or video into source control, CI artifacts, issue trackers, reports, or chat. Record only device slot, anonymized document profile code, safe observation enums, timing/memory aggregates, and pass/fail/defect references that contain no identity data.
 
@@ -51,7 +51,7 @@ All M6 rows are blocking unless product/security explicitly remove the affected 
 | M7-01 | NFC unavailable | Run on a device without NFC or controlled feature absence. | Capability is `UNAVAILABLE`; reader mode is not enabled; reducer/policy remains authoritative. | NOT EXECUTED |
 | M7-02 | NFC disabled | Disable NFC before request; enable while app is active and retry. | `DISABLED` is distinct/recoverable; no settings bypass or fake fallback. | NOT EXECUTED |
 | M7-03 | Reader mode lifecycle | Request read while resumed, pause/resume, cancel, finish. | Reader mode exists only for resumed host + pending operation and disables on every end path. | NOT EXECUTED |
-| M7-04 | IsoDep recognition/connect/close | Present authorized passport/test card. | Android `Tag`/`IsoDep` remains internal; connection closes idempotently; current runtime reports `PROTOCOL_UNSUPPORTED`. | NOT EXECUTED |
+| M7-04 | IsoDep recognition/connect/close | Present authorized passport/test card. | Android `Tag`/`IsoDep` remains internal; connection closes idempotently; transport hands off only to the contained protocol adapter. | NOT EXECUTED |
 | M7-05 | Non-IsoDep/unsupported tag | Present another NFC tag. | Safe unsupported observation; no crash/APDU/protocol attempt. | NOT EXECUTED |
 | M7-06 | Tag removal | Remove before connect, after connect, and at current transport stop. | Loss maps safely, transport closes, no late success. | NOT EXECUTED |
 | M7-07 | Cancellation | Cancel before tag, during connect, and immediately after callback scheduling. | Reader/transport close promptly; exact token prevents late mutation. | NOT EXECUTED |
@@ -59,7 +59,7 @@ All M6 rows are blocking unless product/security explicitly remove the affected 
 | M7-09 | Activity recreation | Rotate/recreate while waiting and while a tag callback is in flight. | Runtime rebinds without retaining old Activity; no duplicate reader/read/result. | NOT EXECUTED |
 | M7-10 | Airplane mode | Cold launch with airplane mode and exercise capability/reader/transport. | Identical local transport behavior; no network attempt/permission. | NOT EXECUTED |
 
-Every M7 row is a blocking M7.3 entry gate. `PROTOCOL_UNSUPPORTED` is the expected current result and must not be interpreted as a protocol defect.
+Every M7 row is a blocking M7.3 release gate. A transport-only test build may still use `PROTOCOL_UNSUPPORTED`; the M7.3 integration build must instead prove safe handoff to its contained protocol adapter.
 
 ## 5. Passport/document corpus
 
@@ -77,6 +77,7 @@ Each profile code is anonymous and contains no issuer/person identifier in repor
 | P8 | Damaged/read-sensitive passport | Optional only when safe and authorized; test RF/removal/retry without risking the document. | FUTURE / AUTHORIZATION REQUIRED |
 | P9 | Unsupported PACE suite | One real/test-card example if available; otherwise approved simulator/test-card evidence plus documented real-world gap. | FUTURE |
 | P10 | Master List/trust coverage variants | Trusted, issuer-not-covered, stale-snapshot, rollover/link, and revocation test material; synthetic certificates may cover negative cases. | FUTURE |
+| P11 | Netherlands TD1 residence permit with RF chip | At least one authorized current card; exercise MRZ-derived PACE/BAC access and printed/DG1 consistency without recording identity data. | NOT EXECUTED |
 
 No single document may stand in for issuer, suite, DG2, generation, and trust diversity. Record corpus coverage separately from pass rate.
 
@@ -97,12 +98,12 @@ No single document may stand in for issuer, suite, DG2, generation, and trust di
 | PR-11 | Secure-messaging failure | Stop/close; no data published; safe SM failure. | Fault injection and test card. | FUTURE |
 | PR-12 | DG1 read | Only four comparison fields extracted; no raw/identity state/UI/log/persistence. | P1/P2/P3 across D1–D4. | FUTURE |
 | PR-13 | DG2 read | Controlled extraction to `PortraitArtifactRef`; size/pixel/memory accounting. | P1/P2/P5/P6 across D1–D4/D9. | FUTURE |
-| PR-14 | SOD read | Bounded parse; no certificate/subject/serial logging; artifact discarded after evidence. | P1/P2/P3. | FUTURE |
-| PR-15 | PA complete | DG hashes, SOD signature, DSC extraction, trust/freshness/coverage reported separately. | P1/P2/P3/P10. | FUTURE |
-| PR-16 | PA partial evidence | Missing DG/hash/DSC/trust/coverage/stale/unsupported each preserved; never aggregate authentic. | Synthetic/test-card plus P10. | FUTURE |
+| PR-14 | SOD read | 1 MiB-bounded parse; no certificate/subject/serial logging; owned bytes erased after evidence. | Authorized Netherlands permit plus synthetic/malformed corpus. | SOURCE IMPLEMENTED / DEVICE NOT EXECUTED |
+| PR-15 | PA complete | DG1/DG14 hashes, SOD signature, DSC direct chain, current-time/freshness/coverage produce signed-data evidence separate from CA. | Authorized Netherlands permit chaining to the bundled CSCA plus synthetic trust cases. | SOURCE IMPLEMENTED / DEVICE NOT EXECUTED |
+| PR-16 | PA partial evidence | Missing DG/hash/DSC, wrong signer/root, stale/uncovered/unsupported each fail closed; never aggregate authentic. | Synthetic/test-card plus trust cases. | SOURCE PARTIAL / FUZZ AND DEVICE NOT EXECUTED |
 | PR-17 | Malformed/unsupported LDS/SOD/certificate | No crash/hang/OOM/leak; safe malformed/unsupported/limit observation. | Fuzz corpus on D1/D2/D9. | FUTURE |
-| PR-18 | Optional CA disabled | No DG14/CA APDU or evidence claim in initial scope. | All release runs unless separately approved. | FUTURE |
-| PR-19 | Optional CA approved path | PA-bound DG14, strict suite, success/failure evidence; no whole-authenticity claim. | Only under separate approval and available documents. | FUTURE / SEPARATE APPROVAL |
+| PR-18 | CA prerequisite blocked | Invalid/unavailable PA or missing/invalid DG14 hash makes CA unreachable and emits no success. | Unit/fault injection plus authorized permit failure cases. | SOURCE IMPLEMENTED / DEVICE NOT EXECUTED |
+| PR-19 | Approved CA path | PA-bound DG14, single matching ECDH key, reviewed version-1 AES suite, fresh JMRTD CA; success/failure evidence remains separate and makes no whole-authenticity claim. | Authorized Netherlands permit on D1–D4; record safe suite/version coverage only. | SOURCE IMPLEMENTED / DEVICE NOT EXECUTED |
 
 ## 7. Lifecycle, RF, offline, and stress matrix
 
@@ -175,4 +176,4 @@ M7.3-H exits only when:
 - limit values are approved from corpus/device evidence; and
 - independent security, privacy, PKI, architecture, Android/release, and product reviewers accept the final report.
 
-A blocked or missing matrix row is not a pass. Until these criteria are met, Atlas keeps the transport-only `PROTOCOL_UNSUPPORTED` behavior.
+A blocked or missing matrix row is not a pass. Until these criteria are met, M7.3 is not release-ready; distribution must remain blocked or use a separately verified transport-only `PROTOCOL_UNSUPPORTED` build.

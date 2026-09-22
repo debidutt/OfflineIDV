@@ -1,6 +1,6 @@
 # ePassport threat model (Milestone 7.2)
 
-Status: approval-level threat model for a possible future M7.3. It documents required controls and tests; it does not claim they are implemented.
+Status: M7.3 protected-access/DG1 controls and the bounded M7.4 Netherlands residence-permit PA/CA controls are implemented in source where identified by ADRs 0016–0017. DG2, broad governed CSCA/link/revocation coverage, face, release-hardening, fuzz, dependency, legal, and device controls remain proposed/blocking. This document makes no production-security claim.
 
 ## 1. Scope, assets, and trust boundaries
 
@@ -31,9 +31,9 @@ The runtime remains offline. The passport, tag, every byte read from it, library
 | BAC selected when forbidden | Product/security policy → adapter | BAC only when no compatible PACE and explicit context policy allows it; immutable request policy; unknown/malformed state fails closed. | Issuer compatibility pressure may encourage unsafe exceptions. | BAC-allowed/forbidden/absent/unsupported/malformed CardAccess matrix; policy-change review. |
 | Unknown access-key/suite fallback | Adapter → JMRTD | Map only explicit key/suite enums; reject unknown OIDs/types/curves/parameters before JMRTD best-effort paths. | Incomplete algorithm registry may deny legitimate documents. | Unknown/future OID, key type, parameter ID, curve, cipher, digest tests; interoperability review. |
 | Replay of prior protocol result | Callback → effect handler/reducer | Exact session/operation generation; one active read; atomic artifact commit only while active; stale/duplicate no-op. | In-process bug could associate a stale result before invalidation. | Replay old success/failure after retry, cancel, expiry, and new session; concurrency stress. |
-| Cloned chip passes BAC/PACE/read | Protocol evidence → policy | Label access/read separately; require PA and, if policy requires clone resistance, separately approved CA bound to signed DG14. | PA without CA does not establish live-chip key possession; CA coverage varies. | Evidence-semantics review, cloned/emulated test where lawful, CA prerequisite tests. |
+| Cloned chip passes BAC/PACE/read | Protocol evidence → policy | Label access/read separately; the Netherlands permit profile requires PA and separately approved CA bound to signed DG14. | PA without CA does not establish live-chip key possession; actual card CA version/suite and clone-emulation coverage remain untested. | Evidence-semantics review, cloned/emulated test where lawful, CA prerequisite and real-card tests. |
 | Untrusted or substituted DSC | SOD/DSC → trust validator | Verify SOD signature and DG hashes separately; build DSC path to approved CSCA under immutable policy; ignore chip-supplied roots. | Trust-store gaps and certificate-policy ambiguity. | Wrong root, self-signed DSC, cross-country substitution, broken chain, constraint/validity/algorithm tests; PKI review. |
-| Stale CSCA/CRL data | Bundled trust snapshot → PA | Versioned signed snapshot, accepted age policy, expiry monitoring, rollback prevention; report `TRUST_STORE_STALE`, never trusted. | Offline app may remain outdated; revocation freshness is inherently delayed. | Clock/reference-date boundaries, stale/missing CRL, expired app bundle, update/rollback/emergency drills. |
+| Stale CSCA/CRL data | Bundled trust snapshot → PA | M7.4 pins one anchor and fails closed after 2027-01-22; production requires a versioned signed snapshot, expiry monitoring, rollback prevention, and governed revocation. | The prototype has no CRL and no rollback state; it cannot establish non-revocation. | Clock boundaries are unit-tested; stale/missing CRL, expired app, update/rollback/emergency drills remain blocking. |
 | Missing issuer/country coverage | Trust snapshot → PA | Explicit coverage metadata and `ISSUER_NOT_COVERED`; no default/fallback trust. | Legitimate documents become inconclusive. | Countries/document eras outside bundle, rollover gaps, historical passports; product acceptance review. |
 | Malicious portrait encoding/decompression bomb | DG2 → image decoder/artifact store | Validate container/mime/dimensions before full decode; encoded/pixel/decoded/aggregate caps; subsample; allowlist codecs; no UI decode. | Native/platform decoder vulnerabilities or hidden allocation overhead. | Corrupt JPEG/JPEG2000 variants, huge dimensions, bombs, multi-image DG2, OOM pressure; decoder security review. |
 | APDU command/response leakage | JMRTD/Scuba/transport → logs/listeners | No APDU listeners; suppress library logging before load; no APDU trace/history; AA disabled; sentinel log-capture tests. | Debugger, OS/vendor layer, or third-party exception may retain bytes. | JUL/logcat/stdout/stderr/crash capture in debug/release; static listener/AA audits. |
@@ -66,7 +66,7 @@ The runtime remains offline. The passport, tag, every byte read from it, library
 - No secret, APDU, identity value, portrait content, certificate identifier, library object, or raw exception reaches logs, state, UI, analytics, crash data, or test output.
 - Cancellation, timeout, tag loss, late callbacks, and every terminal path close transport and clear all Atlas-owned artifacts idempotently.
 - A reference from another session/store/kind can never resolve.
-- PA reports DG hashes, SOD signature, DSC extraction, signer trust, trust freshness, and coverage independently.
+- PA and CA remain separate evidence; M7.4 validates requested DG hashes, SOD signature, DSC direct trust, snapshot freshness/coverage, and PA-bound live-chip proof without an aggregate authenticity flag.
 - Missing/stale/uncovered/revoked/untrusted material can never become trusted evidence.
 - Runtime uses no network even when an embedding host possesses network permission.
 - M8 can receive only `PortraitArtifactRef`, never JMRTD/DG2/transport capability.
@@ -75,4 +75,4 @@ The runtime remains offline. The passport, tag, every byte read from it, library
 
 The eventual adapter and exact minified release artifact require independent security/crypto, privacy, architecture, Android/release, and PKI review. Fuzz results, memory/cancellation measurements, real-device evidence, SBOM/lock/verification metadata, and accepted residual risks must accompany that review.
 
-This threat model is not a production-security claim. Unimplemented controls remain blockers, and a failed or missing review keeps Atlas at `PROTOCOL_UNSUPPORTED`.
+This threat model is not a production-security claim. Unimplemented controls and failed/missing reviews remain blockers. Before distribution, Atlas must either satisfy them for the final artifact or restore the transport-only `PROTOCOL_UNSUPPORTED` fallback.

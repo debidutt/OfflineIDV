@@ -8,8 +8,8 @@ import org.junit.Test
 
 public class PassportDataEnginesTest {
     @Test
-    public fun `matching internal DG1 and printed fields produce match only`() {
-        val result = Td3PrintedChipComparisonEngine.compare(PrintedPassportData(mrz()), chip(mrz()))
+    public fun `matching TD3 fields produce match only`() {
+        val result = MrzPrintedChipComparisonEngine.compare(printed(), chip())
 
         assertEquals(PrintedChipComparisonResult.Match, result)
         assertFalse(result.toString().contains("A12B34567"))
@@ -17,7 +17,7 @@ public class PassportDataEnginesTest {
 
     @Test
     public fun `different selected identity field produces mismatch only`() {
-        val result = Td3PrintedChipComparisonEngine.compare(PrintedPassportData(mrz()), chip(mrz(documentNumber = "Z98Y76543")))
+        val result = MrzPrintedChipComparisonEngine.compare(printed(), chip(documentNumber = "Z98Y76543"))
 
         assertEquals(PrintedChipComparisonResult.Mismatch, result)
         assertFalse(result.toString().contains("Z98Y76543"))
@@ -25,7 +25,7 @@ public class PassportDataEnginesTest {
 
     @Test
     public fun `incomplete input produces inconclusive without identity`() {
-        val result = Td3PrintedChipComparisonEngine.compare(PrintedPassportData("incomplete"), chip(mrz()))
+        val result = MrzPrintedChipComparisonEngine.compare(PrintedPassportData("incomplete"), chip())
 
         assertEquals(PrintedChipComparisonResult.Inconclusive, result)
         assertFalse(result.toString().contains("incomplete"))
@@ -34,7 +34,7 @@ public class PassportDataEnginesTest {
     @Test
     public fun `chip validation preserves six-state passive observation`() {
         PassiveAuthenticationObservation.entries.forEach { status ->
-            val result = PassportChipValidationEngine.validate(chip(mrz(), status = status)) as ChipValidationResult.Validated
+            val result = PassportChipValidationEngine.validate(chip(status = status)) as ChipValidationResult.Validated
 
             assertEquals(status, result.observation.passiveAuthentication)
             assertTrue(result.observation.dg1Available)
@@ -42,10 +42,28 @@ public class PassportDataEnginesTest {
     }
 
     @Test
+    public fun `chip validation preserves chip authentication independently`() {
+        ChipAuthenticationObservation.entries.forEach { status ->
+            val artifact =
+                ChipDataArtifact.fromRead(
+                    dg1Value = encodedFields(),
+                    portraitBytes = null,
+                    passiveAuthentication = PassiveAuthenticationObservation.VALID,
+                    chipAuthentication = status,
+                )
+
+            val result = PassportChipValidationEngine.validate(artifact) as ChipValidationResult.Validated
+
+            assertEquals(PassiveAuthenticationObservation.VALID, result.observation.passiveAuthentication)
+            assertEquals(status, result.observation.chipAuthentication)
+        }
+    }
+
+    @Test
     public fun `DG2 availability requires and returns only opaque portrait artifact`() {
         val artifact =
             ChipDataArtifact.fromRead(
-                dg1Value = mrz(),
+                dg1Value = encodedFields(),
                 portraitBytes = byteArrayOf(1, 2, 3),
                 passiveAuthentication = PassiveAuthenticationObservation.UNAVAILABLE,
             )
@@ -59,7 +77,7 @@ public class PassportDataEnginesTest {
 
     @Test
     public fun `missing DG2 returns no portrait`() {
-        val observation = (PassportChipValidationEngine.validate(chip(mrz())) as ChipValidationResult.Validated).observation
+        val observation = (PassportChipValidationEngine.validate(chip()) as ChipValidationResult.Validated).observation
 
         assertFalse(observation.dg2Available)
         assertNull(observation.portrait)
@@ -70,8 +88,8 @@ public class PassportDataEnginesTest {
         val rendered =
             listOf(
                 PassportAccessKey("A12B34567900101301231"),
-                PrintedPassportData(mrz()),
-                chip(mrz()),
+                printed(),
+                chip(),
                 ChipPortraitArtifact("portrait"),
             ).joinToString()
 
@@ -81,18 +99,17 @@ public class PassportDataEnginesTest {
     }
 
     private companion object {
-        fun chip(
-            dg1: String,
-            status: PassiveAuthenticationObservation = PassiveAuthenticationObservation.NOT_PERFORMED,
-        ): ChipDataArtifact = ChipDataArtifact.fromRead(dg1, null, status)
+        fun printed(documentNumber: String = "A12B34567"): PrintedPassportData =
+            PrintedPassportData.fromMrzFields(documentNumber, "UTO", "900101", "301231")
 
-        fun mrz(documentNumber: String = "A12B34567"): String {
-            val line1 = "P<UTO" + "ATLAS<<SYNTHETIC<PERSON".padEnd(39, '<')
-            val line2 =
-                documentNumber + "0" + "UTO" + "900101" + "0" + "X" + "301231" + "0" +
-                    "<<<<<<<<<<<<<<" + "0" + "0"
-            check(line1.length == 44 && line2.length == 44)
-            return "$line1\n$line2"
-        }
+        fun chip(
+            documentNumber: String = "A12B34567",
+            status: PassiveAuthenticationObservation = PassiveAuthenticationObservation.NOT_PERFORMED,
+        ): ChipDataArtifact = ChipDataArtifact.fromRead(encodedFields(documentNumber), null, status)
+
+        fun encodedFields(documentNumber: String = "A12B34567"): String =
+            PrintedPassportData
+                .fromMrzFields(documentNumber, "UTO", "900101", "301231")
+                .useValue { it }
     }
 }

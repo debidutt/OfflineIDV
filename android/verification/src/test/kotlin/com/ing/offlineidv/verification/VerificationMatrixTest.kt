@@ -182,6 +182,7 @@ public class VerificationMatrixTest {
             VerificationEvent.SessionTimedOut(operation),
             VerificationEvent.SessionExpired(VerificationFixtures.sessionId),
             VerificationEvent.PassportSelected,
+            VerificationEvent.ResidencePermitSelected,
             VerificationEvent.CameraPermissionRequired,
             VerificationEvent.CameraPermissionGranted,
             VerificationEvent.CameraPermissionDenied,

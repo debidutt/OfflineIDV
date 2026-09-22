@@ -122,8 +122,9 @@ public fun AtlasVerifyApp(
                     when (state) {
                         AtlasUiState.Welcome -> WelcomeScreen(runtimeMode, onAction)
                         is AtlasUiState.ScenarioSelector -> ScenarioSelectorScreen(state, onAction)
-                        AtlasUiState.DocumentSelection -> DocumentSelectionScreen(onAction)
+                        AtlasUiState.DocumentSelection -> DocumentSelectionScreen(runtimeMode, onAction)
                         AtlasUiState.PassportInstructions -> PassportInstructionsScreen(runtimeMode, onAction)
+                        AtlasUiState.ResidencePermitInstructions -> ResidencePermitInstructionsScreen(onAction)
                         is AtlasUiState.DocumentCapture -> DocumentCaptureScreen(state, runtimeMode, cameraPreview, onAction)
                         is AtlasUiState.Processing -> ProcessingScreen(state, onAction)
                         is AtlasUiState.Nfc -> NfcScreen(state, runtimeMode, nfcAvailability, onAction)
@@ -218,7 +219,7 @@ private fun WelcomeScreen(
             modifier = Modifier.semantics { heading() },
         )
         Text(
-            text = "Explore the Atlas Offline Identity Verification SDK through an explicit local passport flow.",
+            text = "Explore the Atlas Offline Identity Verification SDK through an explicit local document flow.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -269,7 +270,7 @@ private fun RuntimeModeSelector(
         ) { onAction(AtlasUiAction.SelectRuntimeMode(AtlasRuntimeMode.DEMO)) }
         RuntimeModeRow(
             title = "Real Android Mode",
-            detail = "CameraX, bundled OCR, and real NFC transport; passport protocol and face checks are not available yet",
+            detail = "CameraX, bundled OCR, and protected document-chip reading; face checks are not available yet",
             selected = runtimeMode == AtlasRuntimeMode.REAL_ANDROID,
             tag = AtlasTestTags.MODE_REAL,
         ) { onAction(AtlasUiAction.SelectRuntimeMode(AtlasRuntimeMode.REAL_ANDROID)) }
@@ -320,10 +321,13 @@ private fun DisclosureCard(runtimeMode: AtlasRuntimeMode) {
                 )
             } else {
                 Text("Real Android Mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("CameraX, bundled ML Kit text recognition, and Android NFC transport run locally on this device.")
+                Text("CameraX, bundled ML Kit text recognition, and protected NFC chip reading run locally on this device.")
                 Text("Images and recognized text are held only for the active session. No network is used.")
                 Text(
-                    "EPASSPORT PROTOCOL AND FACE CHECKS ARE NOT AVAILABLE IN THIS BUILD",
+                    "Residence permits use three-line TD1 checks followed by protected NFC DG1 consistency checking; face checks are not performed.",
+                )
+                Text(
+                    "DG1 CONSISTENCY ONLY — NO CHIP-AUTHENTICITY OR FACE CHECK",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                 )
@@ -408,12 +412,15 @@ private fun ScenarioRow(
 }
 
 @Composable
-private fun DocumentSelectionScreen(onAction: (AtlasUiAction) -> Unit) {
+private fun DocumentSelectionScreen(
+    runtimeMode: AtlasRuntimeMode,
+    onAction: (AtlasUiAction) -> Unit,
+) {
     ScreenColumn {
-        ScreenTitle("Choose a document", "This milestone demonstrates the passport flow.")
+        ScreenTitle("Choose a document", "Select the document you want to inspect on this device.")
         DocumentOption(
             title = "Passport",
-            subtitle = "Machine-readable passport with a chip",
+            subtitle = "Two-line TD3 MRZ with passport-chip flow",
             enabled = true,
             tag = AtlasTestTags.PASSPORT,
             onClick = { onAction(AtlasUiAction.SelectPassport) },
@@ -427,11 +434,41 @@ private fun DocumentSelectionScreen(onAction: (AtlasUiAction) -> Unit) {
         )
         DocumentOption(
             title = "Residence permit",
-            subtitle = "Coming later",
-            enabled = false,
+            subtitle =
+                if (runtimeMode == AtlasRuntimeMode.REAL_ANDROID) {
+                    "Netherlands permit · three-line TD1 MRZ · NFC chip consistency"
+                } else {
+                    "Available in Real Android Mode"
+                },
+            enabled = runtimeMode == AtlasRuntimeMode.REAL_ANDROID,
             tag = AtlasTestTags.RESIDENCE_PERMIT,
-            onClick = {},
+            onClick = { onAction(AtlasUiAction.SelectResidencePermit) },
         )
+        CancelButton(onAction)
+    }
+}
+
+@Composable
+private fun ResidencePermitInstructionsScreen(onAction: (AtlasUiAction) -> Unit) {
+    ScreenColumn {
+        ScreenTitle(
+            "Get your residence permit ready",
+            "This flow reads the three-line TD1 machine-readable zone on a Netherlands residence permit.",
+        )
+        Instruction("Place the permit on a flat, contrasting surface.")
+        Instruction("Keep the entire side with the MRZ inside the frame.")
+        Instruction("Avoid glare and strong shadows.")
+        Instruction("Make sure all three MRZ lines are visible.")
+        InfoNote(
+            "After the MRZ check, this flow reads bounded DG1 identity fields from the contactless chip " +
+                "and compares them with the printed MRZ. Face and chip-authenticity checks are not performed.",
+        )
+        Button(
+            onClick = { onAction(AtlasUiAction.ContinueResidencePermitInstructions) },
+            modifier = Modifier.fillMaxWidth().height(56.dp).semantics { testTag = AtlasTestTags.CONTINUE },
+        ) {
+            Text("Continue")
+        }
         CancelButton(onAction)
     }
 }
@@ -517,11 +554,11 @@ private fun DocumentCaptureScreen(
 ) {
     ScreenColumn {
         ScreenTitle(
-            "Frame the passport",
+            "Frame the document",
             if (runtimeMode == AtlasRuntimeMode.DEMO) {
                 "This synthetic capture never opens the device camera."
             } else {
-                "Keep all four corners and both MRZ lines visible. Avoid glare and hold steady."
+                "Keep all four corners and every MRZ line visible. Avoid glare and hold steady."
             },
         )
         ProgressPanel(state.progress)
@@ -530,7 +567,7 @@ private fun DocumentCaptureScreen(
             onClick = { onAction(AtlasUiAction.CaptureDocument) },
             modifier = Modifier.fillMaxWidth().height(56.dp).semantics { testTag = AtlasTestTags.CAPTURE },
         ) {
-            Text(if (runtimeMode == AtlasRuntimeMode.DEMO) "Capture synthetic passport" else "Capture passport")
+            Text(if (runtimeMode == AtlasRuntimeMode.DEMO) "Capture synthetic passport" else "Capture document")
         }
         CancelButton(onAction)
     }
@@ -571,8 +608,8 @@ private fun DocumentFrame(
                 strokeWidth = 6f,
                 cap = StrokeCap.Round,
             )
-            repeat(2) { line ->
-                val y = size.height * (0.82f + line * 0.07f)
+            repeat(3) { line ->
+                val y = size.height * (0.78f + line * 0.07f)
                 drawLine(
                     color = primary.copy(alpha = 0.55f),
                     start = Offset(size.width * 0.12f, y),
@@ -627,11 +664,11 @@ private fun NfcScreen(
 ) {
     ScreenColumn {
         ScreenTitle(
-            if (runtimeMode == AtlasRuntimeMode.DEMO) "Passport data extracted" else "Read passport chip",
+            if (runtimeMode == AtlasRuntimeMode.DEMO) "Passport data extracted" else "Read document chip",
             if (runtimeMode == AtlasRuntimeMode.DEMO) {
                 "Review the safe MRZ signals, then continue to the chip step."
             } else {
-                "Hold the top/back of your phone against the passport."
+                "Hold the top/back of your phone against the contactless document."
             },
             announce = true,
         )
@@ -663,7 +700,7 @@ private fun NfcScreen(
                 AtlasNfcAvailability.AVAILABLE,
                 AtlasNfcAvailability.UNKNOWN,
                 -> {
-                    InfoNote("Keep the passport still until the chip read finishes. No authenticity claim is made.")
+                    InfoNote("Keep the document still until the chip read finishes. No authenticity claim is made.")
                 }
             }
         }
@@ -671,7 +708,7 @@ private fun NfcScreen(
             onClick = { onAction(AtlasUiAction.StartNfc) },
             modifier = Modifier.fillMaxWidth().height(56.dp).semantics { testTag = AtlasTestTags.NFC },
         ) {
-            Text(if (runtimeMode == AtlasRuntimeMode.DEMO) "Simulate chip read" else "Read passport chip")
+            Text(if (runtimeMode == AtlasRuntimeMode.DEMO) "Simulate chip read" else "Read document chip")
         }
         CancelButton(onAction)
     }

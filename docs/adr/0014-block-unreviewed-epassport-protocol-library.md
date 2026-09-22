@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for Milestone 7.
+Accepted for Milestone 7. Superseded for the limited M7.3 engineering subset by ADR 0016; it remains the required fallback decision if M7.3 release gates fail.
 
 ## Context
 

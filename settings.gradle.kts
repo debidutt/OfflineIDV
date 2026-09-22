@@ -9,6 +9,17 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        exclusiveContent {
+            forRepository {
+                mavenCentral()
+            }
+            filter {
+                includeGroup("org.jmrtd")
+                includeGroup("net.sf.scuba")
+                includeGroup("org.bouncycastle")
+                includeGroup("org.ejbca.cvc")
+            }
+        }
         google()
         mavenCentral()
     }

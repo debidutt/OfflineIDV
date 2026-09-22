@@ -2,9 +2,9 @@
 
 ## Scope and safety status
 
-Milestone 7 implements the real Android NFC capability, host lifecycle, tag discovery, and `IsoDep` connection boundary. The mandatory library review did not approve a BAC/PACE dependency, so the adapter closes the transport and returns the predefined `PROTOCOL_UNSUPPORTED` observation after identifying an `IsoDep` tag. Real Android Mode never substitutes a fake chip read.
+Milestone 7 implements the real Android NFC capability, host lifecycle, tag discovery, and `IsoDep` connection boundary. The approved M7.3 extension adds a contained JMRTD 0.8.8 adapter for PACE-first/BAC access and a bounded DG1 read. The approved M7.4 extension adds bounded SOD/DG14 reads, Netherlands residence-permit Passive Authentication, and Chip Authentication. Real Android Mode never substitutes a fake chip read.
 
-No Project Atlas source constructs passport APDUs or implements BAC, PACE, secure messaging, ASN.1, LDS decoding, passive-authentication signature verification, or Chip Authentication.
+Project Atlas does not implement cryptographic primitives or construct protocol APDUs. JMRTD and its reviewed provider own BAC, PACE, secure messaging, LDS decoding, signature primitives, and Chip Authentication behind the NFC adapter. Atlas selects reviewed algorithms, bounds inputs, verifies signed-data relationships, and maps results to finite observations. DG2, AA, EAC-TA, runtime trust retrieval, and revocation checking are not implemented.
 
 ## Runtime flow
 
@@ -16,7 +16,9 @@ VerificationStateMachine
   -> AndroidNfcTagDiscovery enables reader mode only while the host is resumed and a read is pending
   -> NfcAdapter.ReaderCallback keeps Tag inside the Android adapter
   -> IsoDep.get(Tag) and AndroidPassportChipSession own connect/timeout/close
-  -> reviewed protocol boundary (blocked in Milestone 7)
+  -> IsoDepCardServiceBridge contains APDU transport
+  -> JmrtdPassportProtocolReader selects PACE/BAC and reads bounded DG1/SOD/DG14
+  -> PassportChipAuthenticity verifies signed data/trust, then requests fresh Chip Authentication
   -> safe NfcReadResult
   -> effect handler echoes the exact operation token as a VerificationEvent
   -> reducer/policy remain the only flow, retry, and outcome authorities
@@ -40,33 +42,39 @@ The coordinator accepts one tag session for one active read. Duplicate tags are 
 
 ## IsoDep boundary
 
-`AndroidNfcTagDiscovery` calls `IsoDep.get(Tag)` and creates `AndroidPassportChipSession`; neither Android type leaves the NFC platform package. The session owns the connection timeout, `connect`, connection-loss translation, and idempotent `close`. Atlas exposes no public `transceive` or APDU-byte API.
+`AndroidNfcTagDiscovery` calls `IsoDep.get(Tag)` and creates `AndroidPassportChipSession`; neither Android type leaves the NFC platform package. The session owns the connection timeout, connection-loss translation, and idempotent `close`. Atlas exposes no public `transceive` or APDU-byte API.
 
-Because no library passed review, the session does not transmit an APDU. After a successful `IsoDep` connection it returns `PROTOCOL_UNSUPPORTED` and closes the transport. This proves lifecycle and resource ownership without weakening the no-custom-crypto rule.
+`IsoDepCardServiceBridge` is the only production source allowed to mention Scuba command/response APDU types or call `IsoDep.transceive`. It registers no listener, keeps no transcript, caps command and response frames at the smaller of the device maximum and 64 KiB, clears Atlas-owned temporary command/response copies, and emits only finite transport classifications. `JmrtdPassportProtocolReader` contains JMRTD file access and BAC/PACE calls; `PassportChipAuthenticity` contains JMRTD/Java-provider signature, certificate, hash, and Chip Authentication calls. Third-party JUL namespaces are disabled before protocol use, and raw exceptions, messages, keys, document data, APDUs, status payloads, certificates, and library object strings never leave the adapter.
 
 ## BAC and PACE
 
-BAC and PACE are not implemented. The intended strategy is PACE first when a reviewed library reports compatible CardAccess parameters, with BAC fallback only when the document/library combination safely supports it. Downgrade must never happen after an authentication or integrity failure and must be represented as an explicit protocol observation.
+EF.CardAccess is read under a 64 KiB bound before access selection. The closed PACE allowlist contains ECDH generic-mapping with AES-CBC-CMAC 128/192/256 and standardized EC parameter identifiers 8 through 18. Selection is deterministic and prefers the strongest reviewed AES suite.
 
-See `docs/security/epassport-library-review.md` for the blocked selection checkpoint.
+PACE is attempted whenever a compatible reviewed suite is advertised. Any PACE authentication, transport, integrity, provider, parameter, timeout, or technical failure terminates that read; the PACE path contains no BAC call. BAC is eligible only when CardAccess is absent or contains no compatible reviewed suite and the adapter's explicit BAC permission is enabled. Malformed, unreadable, or oversized CardAccess always fails closed and never enables BAC.
 
 ## DG1, DG2, and comparison boundary
 
-The NFC contracts can retain parsed DG1 identity material and optional DG2 portrait bytes only inside a sensitive `ChipDataArtifact`. The artifact's string form is always redacted. `Td3PrintedChipComparisonEngine` compares only document number, date of birth, expiry date, and nationality and returns `MATCH`, `MISMATCH`, or `INCONCLUSIVE`; it returns no identity values and makes no product decision.
+The NFC contracts retain parsed DG1 identity material only inside a sensitive `ChipDataArtifact`. The artifact's string form is always redacted. `MrzPrintedChipComparisonEngine` compares only document number, date of birth, expiry date, and nationality for both TD3 and TD1 and returns `MATCH`, `MISMATCH`, or `INCONCLUSIVE`; it returns no identity values and makes no product decision.
 
-The blocked protocol adapter produces no DG1 or DG2 in Real Mode. DG1/DG2 success is therefore not claimed. The prepared artifact/validation/comparison boundary is covered with conspicuously synthetic unit inputs so a reviewed protocol reader can be connected without changing the reducer or policy evaluator.
+EF.DG1 is read under a 4 KiB bound. The adapter extracts the four fields and discards the raw DG1 after authentication processing. DG2 is never requested. The TD3 and TD1 OCR pipelines store the same minimal four printed fields plus only the MRZ-derived access fields, rather than retaining raw MRZ lines for NFC comparison.
+
+The Netherlands residence-permit profile requires NFC, printed/DG1 consistency, Passive Authentication, and Chip Authentication and does not require face comparison. This is a host composition choice; the reducer, policy evaluator, verification states, and shared state-to-UI mapper do not know JMRTD, CameraX, ML Kit, Android NFC, TD1 transport details, or runtime mode.
 
 ## Passive and Chip Authentication
 
-Passive Authentication has an explicit six-state observation: `NOT_PERFORMED`, `VALID`, `FAILED`, `UNAVAILABLE`, `UNSUPPORTED`, and `TECHNICAL_ERROR`. Atlas has no governed CSCA trust store, so Real Mode can only report `UNAVAILABLE`/`NOT_PERFORMED`; it cannot report `VALID`. Passive Authentication, even when valid, proves signature/hash relationships under the configured trust material, not the holder's identity and not liveness.
+Passive Authentication has an explicit six-state observation: `NOT_PERFORMED`, `VALID`, `FAILED`, `UNAVAILABLE`, `UNSUPPORTED`, and `TECHNICAL_ERROR`. EF.SOD is capped at 1 MiB. The adapter accepts SHA-256/384/512, reviewed RSA/ECDSA/PSS signatures, RSA keys of at least 2048 bits, and EC keys of at least 256 bits. It verifies the DG1 hash, signed attributes/SOD signature, SOD signer identifier, DSC validity and purpose, and a direct DSC signature under the bundled anchor. A missing, stale, uncovered, unsupported, malformed, or invalid prerequisite never becomes `VALID`.
 
-Chip Authentication is unsupported. Atlas makes no clone-resistance claim and does not simulate success.
+The read-only trust snapshot contains only Netherlands residence-permit CSCA serial 4, loaded from the official Netherlands PKD export and pinned by SHA-256. It is usable from 2026-09-22 inclusive until 2027-01-22 exclusive and then fails closed. Runtime network retrieval is forbidden. Revocation is not evaluated, so `VALID` means hash/signature/direct-chain/current-validity checks succeeded under this bounded snapshot; it does not mean the DSC was proven unrevoked. Broader Master List, link-certificate, rollover, historical-anchor, CRL, rollback, distribution, and governance work remains blocking.
+
+Chip Authentication is attempted only after valid Passive Authentication and an authenticated DG14 hash. EF.DG14 is capped at 64 KiB. The selector accepts exactly one matching ECDH key of at least 256 bits and Chip Authentication version 1 with AES-CBC-CMAC 256/192/128, strongest first. DH, 3DES, version 2, unknown suites, mismatched key identifiers, and ambiguity fail closed. JMRTD executes the fresh key agreement and secure-messaging transition; Atlas reports `SUCCEEDED`, explicit authentication failure, or a non-success finite category without exposing protocol values.
+
+Signed-data authenticity and live chip-key possession remain separate evidence rows. Their combination supports a bounded clone-resistance statement for the authenticated key, not holder identity, liveness, entitlement, revocation status, or complete document validity.
 
 ## Artifact ownership and cleanup
 
 MRZ-derived access material, printed data, chip data, and portrait material are registered in the single-session `SessionArtifactStore`. Reducer state contains only opaque references. Identity-based reference ownership prevents an equal-looking reference from another store/session from resolving. Store cleanup closes clearable NFC artifacts, removes all references, and is idempotent. Cancellation and every terminal reducer path trigger transport cancellation and store cleanup.
 
-No raw APDU, DG, access key, document number, name, date, nationality, portrait, SOD, or certificate is placed in UI state, navigation, errors, logs, or persistence.
+No raw APDU, DG, access key, document number, name, date, nationality, portrait, SOD, DG14, public key, or certificate is placed in UI state, navigation, errors, logs, or persistence.
 
 ## Offline and manifest boundary
 
@@ -74,6 +82,6 @@ The source manifest declares optional NFC hardware and `android.permission.NFC`.
 
 ## Device-test strategy and limitations
 
-JVM tests cover capability mapping, duplicate/stale/cancelled callbacks, connection-loss/timeout/error translation, artifact isolation/cleanup/redaction, neutral comparison, exact-token effect translation, and policy isolation. Instrumentation source covers Android capability lookup, `IsoDep` recognition/session wiring, lifecycle cleanup, permission packaging, and offline declarations where a device permits.
+JVM tests cover capability mapping, duplicate/stale/cancelled callbacks, connection-loss/timeout/error translation, fail-closed PACE/BAC selection, LDS byte limits and zeroization, fingerprint-pinned snapshot freshness, fail-closed Chip Authentication suite/key selection, distinct PA/CA evidence and policy, artifact isolation/cleanup/redaction, TD1/TD3-neutral comparison, dependency configuration, exact-token effect translation, and policy isolation. Instrumentation source covers Android capability lookup, `IsoDep` recognition/session wiring, lifecycle cleanup, permission packaging, and offline declarations where a device permits.
 
-An NFC-capable Android device plus an authorized non-production/test passport is required to execute reader mode, tag removal, airplane mode, Activity recreation, and—after a library is approved—BAC/PACE and DG reads. Runtime-only identity input must never enter committed fixtures or assertions. The existing Milestone 6 camera/OCR device-validation gap remains open as well.
+An NFC-capable Android device plus an authorized runtime-only Netherlands residence permit and representative passport are required to execute reader mode, tag removal, airplane mode, Activity recreation, PACE/BAC, DG1/SOD/DG14 reads, PA, and CA. The permit must establish actual DSC issuer, CSCA generation, algorithms, and CA version/suite coverage. Runtime identity input must never enter committed fixtures, logs, screenshots, or assertions. Revocation policy/material, dependency locking/verification, legal/open-source approval, independent crypto/PKI review, debug/release D8/R8, fuzzing, final packaging audits, and the complete device matrix remain release blockers. The existing Milestone 6 camera/OCR device-validation gap remains open as well.

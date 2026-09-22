@@ -15,6 +15,7 @@ public class VerificationPolicyEvaluatorTest {
             VerificationEvidence.NFC_CHIP_READ,
             VerificationEvidence.PRINTED_CHIP_DATA_MATCH,
             VerificationEvidence.PASSIVE_AUTHENTICATION_VALID,
+            VerificationEvidence.CHIP_AUTHENTICATION_SUCCEEDED,
             VerificationEvidence.FACE_MATCH_ACCEPTED,
         )
 
@@ -148,6 +149,23 @@ public class VerificationPolicyEvaluatorTest {
             requirePrintedChipConsistency = false,
             requirePassiveAuthentication = true,
         )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    public fun `chip authentication requirement cannot exist without passive authentication`() {
+        VerificationPolicy(requireChipAuthentication = true)
+    }
+
+    @Test
+    public fun `required chip authentication distinguishes failure from missing proof`() {
+        val policy = VerificationPolicy(requirePassiveAuthentication = true, requireChipAuthentication = true)
+        val failed =
+            completeEvidence - VerificationEvidence.CHIP_AUTHENTICATION_SUCCEEDED +
+                VerificationEvidence.CHIP_AUTHENTICATION_FAILED
+        val missing = completeEvidence - VerificationEvidence.CHIP_AUTHENTICATION_SUCCEEDED
+
+        assertEquals(VerificationOutcome.REJECTED, VerificationPolicyEvaluator.evaluate(policy, failed).outcome)
+        assertEquals(VerificationOutcome.INCONCLUSIVE, VerificationPolicyEvaluator.evaluate(policy, missing).outcome)
     }
 
     private fun assertRejected(rejectingEvidence: VerificationEvidence) {

@@ -35,7 +35,16 @@ internal fun interface AtlasDemoSessionIdFactory {
 
 /** Creates one explicitly real Android runtime; no synthetic fallback is permitted. */
 internal fun interface AtlasRealRuntimeFactory {
-    fun create(sessionId: IdvSessionId): RealAndroidVerificationRuntime
+    fun create(
+        sessionId: IdvSessionId,
+        documentType: RealAndroidDocumentType,
+    ): RealAndroidVerificationRuntime
+}
+
+/** Document profile selected before constructing a real Android runtime. */
+internal enum class RealAndroidDocumentType {
+    PASSPORT_TD3,
+    NETHERLANDS_RESIDENCE_PERMIT_TD1,
 }
 
 /**
@@ -54,6 +63,7 @@ internal class AtlasDemoController(
     private var realRuntime: RealAndroidVerificationRuntime? = null
     private var stateObservation: AutoCloseable? = null
     private var selectedScenario: DemoScenario = DemoScenario.SUCCESS
+    private var selectedRealDocument: RealAndroidDocumentType? = null
     private var nfcHost: Activity? = null
 
     var runtimeMode: AtlasRuntimeMode = AtlasRuntimeMode.DEMO
@@ -82,7 +92,9 @@ internal class AtlasDemoController(
             AtlasUiAction.CloseScenarios -> closeScenarios()
             is AtlasUiAction.SelectScenario -> selectScenario(action.scenario)
             AtlasUiAction.SelectPassport -> showPassportInstructions()
+            AtlasUiAction.SelectResidencePermit -> showResidencePermitInstructions()
             AtlasUiAction.ContinuePassportInstructions -> continuePassportInstructions()
+            AtlasUiAction.ContinueResidencePermitInstructions -> continueResidencePermitInstructions()
             AtlasUiAction.CaptureDocument -> activeOrchestrator?.dispatch(VerificationEvent.CaptureRequested)
             AtlasUiAction.StartNfc -> activeOrchestrator?.dispatch(VerificationEvent.NfcRequested)
             AtlasUiAction.CaptureSelfie -> activeOrchestrator?.dispatch(VerificationEvent.SelfieRequested)
@@ -95,26 +107,16 @@ internal class AtlasDemoController(
 
     private fun start() {
         if (hasRuntime) return
+        if (runtimeMode == AtlasRuntimeMode.REAL_ANDROID) {
+            selectedRealDocument = null
+            update(AtlasUiState.DocumentSelection)
+            return
+        }
         val sessionId = sessionIdFactory.create()
-        val orchestrator =
-            when (runtimeMode) {
-                AtlasRuntimeMode.DEMO -> {
-                    val created = runtimeFactory.create(selectedScenario, sessionId)
-                    runtime = created
-                    created.orchestrator
-                }
-
-                AtlasRuntimeMode.REAL_ANDROID -> {
-                    val created = realRuntimeFactory?.create(sessionId) ?: return
-                    realRuntime = created
-                    nfcHost?.let(created::attachNfcHost)
-                    created.orchestrator
-                }
-            }
-        stateObservation =
-            orchestrator.observe { domainState ->
-                update(VerificationUiStateMapper.map(domainState))
-            }
+        val created = runtimeFactory.create(selectedScenario, sessionId)
+        runtime = created
+        val orchestrator = created.orchestrator
+        observe(orchestrator)
         orchestrator.dispatch(VerificationEvent.Start(sessionId))
         runtime?.applyConfiguredLifecycleTrigger()
     }
@@ -134,15 +136,67 @@ internal class AtlasDemoController(
     }
 
     private fun showPassportInstructions() {
-        if (activeOrchestrator?.state is DocumentSelection) {
+        if (activeOrchestrator?.state is DocumentSelection || isRealDocumentSelection) {
+            selectedRealDocument =
+                if (runtimeMode == AtlasRuntimeMode.REAL_ANDROID) RealAndroidDocumentType.PASSPORT_TD3 else null
             update(AtlasUiState.PassportInstructions)
         }
     }
 
     private fun continuePassportInstructions() {
-        val active = activeOrchestrator ?: return
         if (state != AtlasUiState.PassportInstructions) return
-        active.dispatch(VerificationEvent.PassportSelected)
+        if (runtimeMode == AtlasRuntimeMode.REAL_ANDROID) {
+            beginRealDocument(RealAndroidDocumentType.PASSPORT_TD3)
+        } else {
+            activeOrchestrator?.dispatch(VerificationEvent.PassportSelected)
+        }
+    }
+
+    private fun showResidencePermitInstructions() {
+        if (!isRealDocumentSelection) return
+        selectedRealDocument = RealAndroidDocumentType.NETHERLANDS_RESIDENCE_PERMIT_TD1
+        update(AtlasUiState.ResidencePermitInstructions)
+    }
+
+    private fun continueResidencePermitInstructions() {
+        if (state != AtlasUiState.ResidencePermitInstructions) return
+        beginRealDocument(RealAndroidDocumentType.NETHERLANDS_RESIDENCE_PERMIT_TD1)
+    }
+
+    private fun beginRealDocument(documentType: RealAndroidDocumentType) {
+        if (runtimeMode != AtlasRuntimeMode.REAL_ANDROID || hasRuntime || selectedRealDocument != documentType) return
+        val factory = realRuntimeFactory ?: return
+        val created = factory.create(sessionIdFactory.create(), documentType)
+        realRuntime = created
+        nfcHost?.let(created::attachNfcHost)
+        observe(created.orchestrator, documentType)
+        created.orchestrator.dispatch(VerificationEvent.Start(created.sessionId))
+    }
+
+    private fun observe(
+        orchestrator: SerializedVerificationOrchestrator,
+        documentType: RealAndroidDocumentType? = null,
+    ) {
+        var selectionSent = false
+        stateObservation =
+            orchestrator.observe { domainState ->
+                if (domainState is DocumentSelection && documentType != null && !selectionSent) {
+                    selectionSent = true
+                    orchestrator.dispatch(
+                        when (documentType) {
+                            RealAndroidDocumentType.PASSPORT_TD3 -> {
+                                VerificationEvent.PassportSelected
+                            }
+
+                            RealAndroidDocumentType.NETHERLANDS_RESIDENCE_PERMIT_TD1 -> {
+                                VerificationEvent.ResidencePermitSelected
+                            }
+                        },
+                    )
+                } else {
+                    update(VerificationUiStateMapper.map(domainState))
+                }
+            }
     }
 
     private fun cancel() {
@@ -180,6 +234,7 @@ internal class AtlasDemoController(
         stateObservation = null
         runtime = null
         realRuntime = null
+        selectedRealDocument = null
     }
 
     override fun close() {
@@ -216,6 +271,9 @@ internal class AtlasDemoController(
 
     private val hasRuntime: Boolean
         get() = runtime != null || realRuntime != null
+
+    private val isRealDocumentSelection: Boolean
+        get() = runtimeMode == AtlasRuntimeMode.REAL_ANDROID && !hasRuntime && state == AtlasUiState.DocumentSelection
 
     private val activeOrchestrator: SerializedVerificationOrchestrator?
         get() = runtime?.orchestrator ?: realRuntime?.orchestrator
@@ -257,8 +315,8 @@ internal object AtlasDemoCompositionRoot {
                 },
             realRuntimeFactory =
                 if (context != null && permissionGateway != null) {
-                    AtlasRealRuntimeFactory { sessionId ->
-                        RealAndroidVerificationFactory.create(context, sessionId, permissionGateway)
+                    AtlasRealRuntimeFactory { sessionId, documentType ->
+                        RealAndroidVerificationFactory.create(context, sessionId, permissionGateway, documentType)
                     }
                 } else {
                     null
