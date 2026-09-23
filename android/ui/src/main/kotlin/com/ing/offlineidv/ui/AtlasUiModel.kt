@@ -101,6 +101,7 @@ public enum class AtlasNfcAvailability {
 
 /** Finite presentation-only NFC status derived from reducer state and predefined errors. */
 public enum class AtlasNfcScanStatus {
+    STARTING_READER,
     READY_TO_SCAN,
     CHIP_DETECTED,
     CONNECTING,

@@ -149,6 +149,7 @@ public class VerificationNfcFaceTest {
         harness.advanceToNfcRead()
 
         listOf(
+            NfcReadPhase.READY_TO_SCAN,
             NfcReadPhase.CHIP_DETECTED,
             NfcReadPhase.CONNECTING,
             NfcReadPhase.SCAN_IN_PROGRESS,
@@ -176,7 +177,7 @@ public class VerificationNfcFaceTest {
         assertEquals(NfcFailure.TAG_LOST, recovery.error?.reason)
         harness.dispatch(VerificationEvent.Retry)
 
-        assertEquals(NfcReadPhase.READY_TO_SCAN, (harness.state as ReadingNfc).phase)
+        assertEquals(NfcReadPhase.STARTING_READER, (harness.state as ReadingNfc).phase)
         assertEquals(2, (harness.state as ReadingNfc).progress.retries.attemptsFor(RetryableStep.NFC))
     }
 

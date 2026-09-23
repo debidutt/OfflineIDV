@@ -69,12 +69,16 @@ public class NfcSessionCoordinatorTest {
             results::add,
         )
 
+        assertTrue(progress.isEmpty())
+        discovery.confirmReaderActive()
+        assertEquals(listOf(NfcReadProgress.READER_ACTIVE), progress)
         discovery.callbacks.single()(NfcTagDiscoveryResult.Connected(session))
-        assertEquals(listOf(NfcReadProgress.TAG_DETECTED), progress)
+        assertEquals(listOf(NfcReadProgress.READER_ACTIVE, NfcReadProgress.TAG_DETECTED), progress)
         executor.runAll()
 
         assertEquals(
             listOf(
+                NfcReadProgress.READER_ACTIVE,
                 NfcReadProgress.TAG_DETECTED,
                 NfcReadProgress.CONNECTING,
                 NfcReadProgress.READING,
@@ -197,6 +201,22 @@ public class NfcSessionCoordinatorTest {
         assertTrue(discovery.cancelled.single())
     }
 
+    @Test
+    public fun `synchronous discovery failure still cancels the subsequently attached handle`() {
+        var cancelled = false
+        val discovery =
+            NfcTagDiscovery { callback ->
+                callback(NfcTagDiscoveryResult.Failed(IdvError.Nfc(NfcFailure.TECHNICAL_ERROR)))
+                CancellableOperation { cancelled = true }
+            }
+        val results = mutableListOf<NfcReadResult>()
+
+        coordinator(NfcCapability.AVAILABLE, discovery).read(request, results::add)
+
+        assertTrue(cancelled)
+        assertEquals("nfc.technical_error", (results.single() as NfcReadResult.Failed).error.code)
+    }
+
     private fun executeSession(result: NfcReadResult): NfcReadResult {
         val discovery = RecordingDiscovery()
         val results = mutableListOf<NfcReadResult>()
@@ -207,6 +227,7 @@ public class NfcSessionCoordinatorTest {
 
     private class RecordingDiscovery : NfcTagDiscovery {
         val callbacks = mutableListOf<(NfcTagDiscoveryResult) -> Unit>()
+        val progressObservers = mutableListOf<NfcReadProgressObserver>()
         val cancelled = mutableListOf<Boolean>()
 
         override fun start(callback: (NfcTagDiscoveryResult) -> Unit): CancellableOperation {
@@ -214,6 +235,18 @@ public class NfcSessionCoordinatorTest {
             cancelled += false
             val index = cancelled.lastIndex
             return CancellableOperation { cancelled[index] = true }
+        }
+
+        override fun start(
+            progressObserver: NfcReadProgressObserver,
+            callback: (NfcTagDiscoveryResult) -> Unit,
+        ): CancellableOperation {
+            progressObservers += progressObserver
+            return start(callback)
+        }
+
+        fun confirmReaderActive() {
+            progressObservers.single().onProgress(NfcReadProgress.READER_ACTIVE)
         }
     }
 

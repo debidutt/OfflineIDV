@@ -239,6 +239,7 @@ public object VerificationUiStateMapper {
 
     private fun NfcReadPhase.toPresentationStatus(): AtlasNfcScanStatus =
         when (this) {
+            NfcReadPhase.STARTING_READER -> AtlasNfcScanStatus.STARTING_READER
             NfcReadPhase.READY_TO_SCAN -> AtlasNfcScanStatus.READY_TO_SCAN
             NfcReadPhase.CHIP_DETECTED -> AtlasNfcScanStatus.CHIP_DETECTED
             NfcReadPhase.CONNECTING -> AtlasNfcScanStatus.CONNECTING

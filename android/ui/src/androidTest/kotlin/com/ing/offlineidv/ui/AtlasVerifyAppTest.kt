@@ -239,7 +239,15 @@ public class AtlasVerifyAppTest {
         composeRule.onNodeWithText("Start chip scan").performScrollTo().performClick()
         assertEquals(listOf(AtlasUiAction.StartNfc), actions)
 
-        state.value = state.value.copy(canStartScan = false)
+        state.value =
+            state.value.copy(
+                scanStatus = AtlasNfcScanStatus.STARTING_READER,
+                canStartScan = false,
+            )
+        composeRule.onNodeWithText("Starting NFC reader").assertIsDisplayed()
+        composeRule.onNodeWithText("NFC reader active. Hold the document against the phone now.").assertDoesNotExist()
+
+        state.value = state.value.copy(scanStatus = AtlasNfcScanStatus.READY_TO_SCAN)
         composeRule.onNodeWithText("Ready to scan").assertExists()
         composeRule
             .onNodeWithText("NFC reader active. Hold the document against the phone now.")

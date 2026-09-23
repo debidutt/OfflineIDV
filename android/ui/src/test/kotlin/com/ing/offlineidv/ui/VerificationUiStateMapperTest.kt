@@ -84,7 +84,15 @@ public class VerificationUiStateMapperTest {
     public fun `reading phases map to distinct reactive NFC presentation states`() {
         val reading = successStates().filterIsInstance<ReadingNfc>().first()
 
-        assertFalse((VerificationUiStateMapper.map(reading) as AtlasUiState.Nfc).canStartScan)
+        val starting = VerificationUiStateMapper.map(reading) as AtlasUiState.Nfc
+        assertFalse(starting.canStartScan)
+        assertEquals(AtlasNfcScanStatus.STARTING_READER, starting.scanStatus)
+
+        assertEquals(
+            AtlasNfcScanStatus.READY_TO_SCAN,
+            (VerificationUiStateMapper.map(reading.copy(phase = NfcReadPhase.READY_TO_SCAN)) as AtlasUiState.Nfc)
+                .scanStatus,
+        )
 
         assertEquals(
             AtlasNfcScanStatus.CHIP_DETECTED,

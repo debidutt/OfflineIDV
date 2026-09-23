@@ -13,7 +13,7 @@ VerificationStateMachine
   -> StartNfcRead(operation token, opaque access-key reference)
   -> RealVerificationEffectHandler resolves access material in the session store
   -> NfcSessionCoordinator starts one cancellable read and emits payload-free progress
-  -> AndroidNfcTagDiscovery enables reader mode only while the host is resumed and a read is pending
+  -> AndroidNfcTagDiscovery keeps reader mode enabled while the host is resumed and the read is active
   -> NfcAdapter.ReaderCallback keeps Tag inside the Android adapter
   -> IsoDep.get(Tag) and AndroidPassportChipSession own connect/timeout/close
   -> IsoDepCardServiceBridge contains APDU transport
@@ -36,7 +36,7 @@ The composition root advertises the reducer's NFC capability when hardware exist
 
 ## Tag discovery lifecycle
 
-The Activity attaches to the discovery adapter while resumed and detaches while paused. The adapter enables Android reader mode only when all three conditions hold: an Activity is attached, NFC is available, and one read is pending. Detach disables reader mode and closes a claimed physical-tag lease, including the detach/discovery race; a pending read that has not discovered a tag can resume discovery when the host reattaches. Cancellation, completion, and close also disable reader mode and close the lease. Activity recreation can reattach the same ViewModel-owned runtime without placing an Activity, `Tag`, or `IsoDep` in reducer or Compose state.
+The Activity attaches to the discovery adapter while resumed and detaches while paused. The adapter enables Android reader mode only when all three conditions hold: an Activity is attached, NFC is available, and one read is active. Reader mode remains enabled after a tag is claimed so Android keeps the RF field available through `IsoDep.connect()` and the complete protected chip read. It is disabled only when that read is cancelled, completes, is replaced, the host detaches, or the adapter closes. Detach also closes a claimed physical-tag lease, including the detach/discovery race; an active read that has not discovered a tag can resume discovery when the host reattaches. Activity recreation can reattach the same ViewModel-owned runtime without placing an Activity, `Tag`, or `IsoDep` in reducer or Compose state.
 
 The coordinator accepts one tag session for one active read. Duplicate tags are closed. Callbacks from cancelled or replaced reads are ignored, and their sessions are closed. Terminal cleanup cancels the active coordinator operation before clearing artifacts.
 
@@ -44,7 +44,7 @@ One short, best-effort vibration is requested after a new physical tag callback 
 
 ## Reactive progress and safe diagnostics
 
-The NFC feature emits only `TAG_DETECTED`, `CONNECTING`, and `READING`. The real effect handler translates them into token-bound verification events, the reducer owns monotonic `NfcReadPhase`, and the shared mapper projects Ready to scan, Chip detected, Connecting, Scan in progress, and Scan complete. Connection loss, access denial, unsupported chip/access control, timeout, and other errors remain distinct predefined reducer recovery observations. Compose never interprets APDUs, authentication evidence, or product outcomes, and the progress indicator is indeterminate rather than a fabricated percentage.
+The NFC feature emits only `READER_ACTIVE`, `TAG_DETECTED`, `CONNECTING`, and `READING`. The UI initially shows Starting NFC reader; only Android's successful `enableReaderMode` call advances it to Ready to scan. The real effect handler translates later engine observations into token-bound verification events, the reducer owns monotonic `NfcReadPhase`, and the shared mapper projects Chip detected, Connecting, Scan in progress, and Scan complete. Connection loss, access denial, unsupported chip/access control, timeout, and other errors remain distinct predefined reducer recovery observations. Compose never interprets APDUs, authentication evidence, or product outcomes, and the progress indicator is indeterminate rather than a fabricated percentage.
 
 Debuggable builds can receive `NFC_DIAG` lines for closed stages such as reader mode, tag discovery, `IsoDep`, CardAccess, PACE/BAC, DG1, Passive Authentication, DG14, and Chip Authentication. Diagnostics contain only stage/status enums, predefined safe error codes, and closed authenticity observations. Raw MRZ values, access keys, tag identifiers, APDUs, status payloads, certificates, exception messages, and LDS data cannot be represented by the diagnostic contract. Diagnostic failures never alter verification behavior.
 

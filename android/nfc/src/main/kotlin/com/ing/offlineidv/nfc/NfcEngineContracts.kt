@@ -245,6 +245,7 @@ public fun interface AsyncPassportNfcEngine {
 
 /** Payload-free progress emitted by the NFC engine; it carries no tag, key, APDU, or LDS data. */
 public enum class NfcReadProgress {
+    READER_ACTIVE,
     TAG_DETECTED,
     CONNECTING,
     READING,

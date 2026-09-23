@@ -105,6 +105,15 @@ internal class PhysicalTagSessionLease {
     }
 }
 
+/** Keeps the Android RF field alive for the whole active read, including after tag claim. */
+internal object NfcReaderModeRetentionPolicy {
+    fun shouldEnable(
+        closed: Boolean,
+        hasActiveRead: Boolean,
+        hostAttached: Boolean,
+    ): Boolean = !closed && hasActiveRead && hostAttached
+}
+
 /** Android capability adapter that distinguishes absent, disabled, and available NFC. */
 public class AndroidNfcCapabilityDetector(
     context: Context,
@@ -138,6 +147,7 @@ public class AndroidNfcTagDiscovery(
     private val adapter: NfcAdapter? = context.applicationContext.getSystemService(NfcManager::class.java)?.defaultAdapter
     private var activity: Activity? = null
     private var readerModeActivity: Activity? = null
+    private var readerModeEnabled: Boolean = false
     private var pending: PendingDiscovery? = null
     private var active: PendingDiscovery? = null
     private var closed: Boolean = false
@@ -170,7 +180,12 @@ public class AndroidNfcTagDiscovery(
         refreshReaderMode()
     }
 
-    override fun start(callback: (NfcTagDiscoveryResult) -> Unit): CancellableOperation {
+    override fun start(callback: (NfcTagDiscoveryResult) -> Unit): CancellableOperation = start(NfcReadProgressObserver.NONE, callback)
+
+    override fun start(
+        progressObserver: NfcReadProgressObserver,
+        callback: (NfcTagDiscoveryResult) -> Unit,
+    ): CancellableOperation {
         val capability = capabilityDetector.detect()
         if (capability != NfcCapability.AVAILABLE) {
             callback(
@@ -182,7 +197,7 @@ public class AndroidNfcTagDiscovery(
             )
             return CancellableOperation.NONE
         }
-        val current = PendingDiscovery(callback)
+        val current = PendingDiscovery(callback, progressObserver)
         val replaced =
             synchronized(this) {
                 if (closed) {
@@ -278,43 +293,97 @@ public class AndroidNfcTagDiscovery(
     }
 
     private fun refreshReaderMode() {
-        val (disable, enable) =
+        val update =
             synchronized(this) {
-                val desired = if (!closed && pending != null) activity else null
-                val previous = if (readerModeActivity !== desired) readerModeActivity else null
-                if (readerModeActivity !== desired) readerModeActivity = desired
-                previous to desired
-            }
-        disable?.let { host -> runOnHost(host) { adapter?.disableReaderMode(host) } }
-        enable?.let { host ->
-            runOnHost(host) {
-                try {
-                    adapter?.enableReaderMode(
-                        host,
-                        ::onTagDiscovered,
-                        NfcAdapter.FLAG_READER_NFC_A or
-                            NfcAdapter.FLAG_READER_NFC_B or
-                            NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
-                        null,
+                val desired =
+                    if (
+                        NfcReaderModeRetentionPolicy.shouldEnable(
+                            closed = closed,
+                            hasActiveRead = active != null,
+                            hostAttached = activity != null,
+                        )
+                    ) {
+                        activity
+                    } else {
+                        null
+                    }
+                if (readerModeActivity === desired) {
+                    ReaderModeUpdate(reportActive = active?.takeIf { desired != null && readerModeEnabled })
+                } else {
+                    val previous = readerModeActivity
+                    readerModeActivity = desired
+                    readerModeEnabled = false
+                    ReaderModeUpdate(
+                        disable = previous,
+                        enable = desired,
                     )
-                    diagnosticSink.recordSafely(
-                        NfcDiagnosticEvent(NfcDiagnosticStage.READER_MODE, NfcDiagnosticStatus.SUCCEEDED),
-                    )
-                } catch (_: RuntimeException) {
-                    diagnosticSink.recordSafely(
-                        NfcDiagnosticEvent(
-                            NfcDiagnosticStage.READER_MODE,
-                            NfcDiagnosticStatus.FAILED,
-                            NfcFailure.TECHNICAL_ERROR,
-                        ),
-                    )
-                    failPending()
                 }
+            }
+        update.disable?.let { host -> runOnHost(host) { runCatching { adapter?.disableReaderMode(host) } } }
+        val enable = update.enable
+        if (enable == null) {
+            update.reportActive?.reportReaderActive()
+            return
+        }
+        runOnHost(enable) {
+            diagnosticSink.recordSafely(
+                NfcDiagnosticEvent(NfcDiagnosticStage.READER_MODE, NfcDiagnosticStatus.STARTED),
+            )
+            val currentAdapter = adapter
+            if (currentAdapter == null) {
+                diagnosticSink.recordSafely(
+                    NfcDiagnosticEvent(
+                        NfcDiagnosticStage.READER_MODE,
+                        NfcDiagnosticStatus.FAILED,
+                        NfcFailure.UNAVAILABLE,
+                    ),
+                )
+                failPending(NfcFailure.UNAVAILABLE)
+                return@runOnHost
+            }
+            try {
+                currentAdapter.enableReaderMode(
+                    enable,
+                    ::onTagDiscovered,
+                    NfcAdapter.FLAG_READER_NFC_A or
+                        NfcAdapter.FLAG_READER_NFC_B or
+                        NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
+                    null,
+                )
+                diagnosticSink.recordSafely(
+                    NfcDiagnosticEvent(NfcDiagnosticStage.READER_MODE, NfcDiagnosticStatus.SUCCEEDED),
+                )
+                val current =
+                    synchronized(this) {
+                        if (readerModeActivity === enable) {
+                            readerModeEnabled = true
+                            active
+                        } else {
+                            null
+                        }
+                    }
+                if (current == null) {
+                    runCatching { currentAdapter.disableReaderMode(enable) }
+                } else {
+                    current.reportReaderActive()
+                }
+            } catch (_: RuntimeException) {
+                synchronized(this) {
+                    if (readerModeActivity === enable) readerModeEnabled = false
+                }
+                diagnosticSink.recordSafely(
+                    NfcDiagnosticEvent(
+                        NfcDiagnosticStage.READER_MODE,
+                        NfcDiagnosticStatus.FAILED,
+                        NfcFailure.TECHNICAL_ERROR,
+                    ),
+                )
+                failPending(NfcFailure.TECHNICAL_ERROR)
             }
         }
     }
 
-    private fun failPending() {
+    private fun failPending(failure: NfcFailure) {
         val current =
             synchronized(this) {
                 pending?.also {
@@ -324,7 +393,7 @@ public class AndroidNfcTagDiscovery(
             } ?: return
         refreshReaderMode()
         if (!current.cancelled) {
-            current.callback(NfcTagDiscoveryResult.Failed(IdvError.Nfc(NfcFailure.TECHNICAL_ERROR)))
+            current.callback(NfcTagDiscoveryResult.Failed(IdvError.Nfc(failure)))
         }
     }
 
@@ -347,10 +416,25 @@ public class AndroidNfcTagDiscovery(
 
     private class PendingDiscovery(
         val callback: (NfcTagDiscoveryResult) -> Unit,
+        private val progressObserver: NfcReadProgressObserver,
         var claimed: Boolean = false,
         var cancelled: Boolean = false,
         val lease: PhysicalTagSessionLease = PhysicalTagSessionLease(),
         val hapticGate: NewTagHapticGate = NewTagHapticGate(),
+    ) {
+        private val readerActiveReported = AtomicBoolean(false)
+
+        fun reportReaderActive() {
+            if (!cancelled && readerActiveReported.compareAndSet(false, true)) {
+                runCatching { progressObserver.onProgress(com.ing.offlineidv.nfc.NfcReadProgress.READER_ACTIVE) }
+            }
+        }
+    }
+
+    private data class ReaderModeUpdate(
+        val disable: Activity? = null,
+        val enable: Activity? = null,
+        val reportActive: PendingDiscovery? = null,
     )
 
     private companion object {

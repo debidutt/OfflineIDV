@@ -200,6 +200,9 @@ public class RealVerificationEffectHandlerTest {
         val harness = Harness(includeNfc = true)
         harness.startNfcRead()
 
+        assertEquals(NfcReadPhase.STARTING_READER, (harness.orchestrator.state as ReadingNfc).phase)
+        harness.nfcProgressObservers.single().onProgress(NfcReadProgress.READER_ACTIVE)
+        assertEquals(NfcReadPhase.READY_TO_SCAN, (harness.orchestrator.state as ReadingNfc).phase)
         harness.nfcProgressObservers.single().onProgress(NfcReadProgress.TAG_DETECTED)
         assertEquals(NfcReadPhase.CHIP_DETECTED, (harness.orchestrator.state as ReadingNfc).phase)
         harness.nfcProgressObservers.single().onProgress(NfcReadProgress.CONNECTING)

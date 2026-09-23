@@ -753,6 +753,10 @@ private fun NfcScreen(
 
 private fun AtlasNfcScanStatus.presentationCopy(canStartScan: Boolean): Pair<String, String> =
     when (this) {
+        AtlasNfcScanStatus.STARTING_READER -> {
+            "Starting NFC reader" to "Waiting for Android to enable NFC reader mode."
+        }
+
         AtlasNfcScanStatus.READY_TO_SCAN -> {
             if (canStartScan) {
                 "Ready to scan" to "Hold the top or back of your phone against the contactless document."

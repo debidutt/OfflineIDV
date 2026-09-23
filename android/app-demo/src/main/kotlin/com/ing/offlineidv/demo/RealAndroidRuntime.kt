@@ -676,6 +676,7 @@ internal class RealVerificationEffectHandler(
 
     private fun NfcReadProgress.toVerificationPhase(): NfcReadPhase =
         when (this) {
+            NfcReadProgress.READER_ACTIVE -> NfcReadPhase.READY_TO_SCAN
             NfcReadProgress.TAG_DETECTED -> NfcReadPhase.CHIP_DETECTED
             NfcReadProgress.CONNECTING -> NfcReadPhase.CONNECTING
             NfcReadProgress.READING -> NfcReadPhase.SCAN_IN_PROGRESS

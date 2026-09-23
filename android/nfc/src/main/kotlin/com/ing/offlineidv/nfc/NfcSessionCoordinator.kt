@@ -40,6 +40,12 @@ public sealed interface NfcTagDiscoveryResult {
 /** Starts Android-owned tag discovery and returns an idempotent reader-mode cancellation handle. */
 public fun interface NfcTagDiscovery {
     public fun start(callback: (NfcTagDiscoveryResult) -> Unit): CancellableOperation
+
+    /** Starts discovery with confirmation that Android reader mode was enabled successfully. */
+    public fun start(
+        progressObserver: NfcReadProgressObserver,
+        callback: (NfcTagDiscoveryResult) -> Unit,
+    ): CancellableOperation = start(callback)
 }
 
 /**
@@ -95,7 +101,7 @@ public class NfcSessionCoordinator(
         }
         val handle =
             try {
-                discovery.start { result -> accept(operation, result) }
+                discovery.start(NfcReadProgressObserver(operation::report)) { result -> accept(operation, result) }
             } catch (_: RuntimeException) {
                 complete(operation, NfcReadResult.Failed(IdvError.Nfc(NfcFailure.TECHNICAL_ERROR)))
                 CancellableOperation.NONE
@@ -199,6 +205,7 @@ public class NfcSessionCoordinator(
     ) {
         val cancelled = AtomicBoolean(false)
         private val tagClaimed = AtomicBoolean(false)
+        private val discoveryCancellationRequested = AtomicBoolean(false)
 
         @Volatile private var discovery: CancellableOperation? = null
 
@@ -206,10 +213,11 @@ public class NfcSessionCoordinator(
 
         fun attachDiscovery(handle: CancellableOperation) {
             discovery = handle
-            if (cancelled.get()) handle.cancel()
+            if (cancelled.get() || discoveryCancellationRequested.get()) handle.cancel()
         }
 
         fun cancelDiscovery() {
+            discoveryCancellationRequested.set(true)
             discovery?.cancel()
         }
 
@@ -228,7 +236,7 @@ public class NfcSessionCoordinator(
 
         fun cancel() {
             if (cancelled.compareAndSet(false, true)) {
-                discovery?.cancel()
+                cancelDiscovery()
                 session?.let(::safelyClose)
             }
         }
