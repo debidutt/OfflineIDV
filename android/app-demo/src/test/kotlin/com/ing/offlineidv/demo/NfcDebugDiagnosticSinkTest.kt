@@ -18,6 +18,12 @@ public class NfcDebugDiagnosticSinkTest {
 
         sink.record(
             NfcDiagnosticEvent(
+                stage = NfcDiagnosticStage.FOREGROUND_DISPATCH,
+                status = NfcDiagnosticStatus.SUCCEEDED,
+            ),
+        )
+        sink.record(
+            NfcDiagnosticEvent(
                 stage = NfcDiagnosticStage.PACE,
                 status = NfcDiagnosticStatus.FAILED,
                 failure = NfcFailure.ACCESS_DENIED,
@@ -33,6 +39,7 @@ public class NfcDebugDiagnosticSinkTest {
 
         assertEquals(
             listOf(
+                "NFC_DIAG STAGE=FOREGROUND_DISPATCH STATUS=SUCCEEDED",
                 "NFC_DIAG STAGE=PACE STATUS=FAILED FAILURE=nfc.access_denied",
                 "NFC_DIAG STAGE=PASSIVE_AUTHENTICATION STATUS=SUCCEEDED OBSERVATION=PASSIVE_AUTH_VALID",
             ),

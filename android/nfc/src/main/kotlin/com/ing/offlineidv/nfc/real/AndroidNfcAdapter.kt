@@ -1,7 +1,9 @@
 package com.ing.offlineidv.nfc.real
 
 import android.app.Activity
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.nfc.NfcAdapter
 import android.nfc.NfcManager
@@ -114,6 +116,11 @@ internal object NfcReaderModeRetentionPolicy {
     ): Boolean = !closed && hasActiveRead && hostAttached
 }
 
+/** Restricts the foreground-dispatch fallback to Android NFC discovery actions. */
+internal object NfcForegroundDispatchPolicy {
+    fun accepts(action: String?): Boolean = action == NfcAdapter.ACTION_TECH_DISCOVERED || action == NfcAdapter.ACTION_TAG_DISCOVERED
+}
+
 /** Android capability adapter that distinguishes absent, disabled, and available NFC. */
 public class AndroidNfcCapabilityDetector(
     context: Context,
@@ -148,6 +155,7 @@ public class AndroidNfcTagDiscovery(
     private var activity: Activity? = null
     private var readerModeActivity: Activity? = null
     private var readerModeEnabled: Boolean = false
+    private var foregroundDispatchEnabled: Boolean = false
     private var pending: PendingDiscovery? = null
     private var active: PendingDiscovery? = null
     private var closed: Boolean = false
@@ -178,6 +186,25 @@ public class AndroidNfcTagDiscovery(
             }
         leaseToInterrupt?.interrupt()
         refreshReaderMode()
+    }
+
+    /**
+     * Accepts an ISO-DEP tag delivered through Android foreground dispatch.
+     *
+     * This is a fallback for devices whose privileged system NFC service replaces an active
+     * reader-mode registration. The tag still enters the same one-shot discovery, IsoDep, BAC/PACE,
+     * and LDS path as [NfcAdapter.ReaderCallback].
+     */
+    public fun acceptForegroundIntent(intent: Intent) {
+        if (!NfcForegroundDispatchPolicy.accepts(intent.action)) return
+        val tag =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(NfcAdapter.EXTRA_TAG, Tag::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)
+            } ?: return
+        onTagDiscovered(tag)
     }
 
     override fun start(callback: (NfcTagDiscoveryResult) -> Unit): CancellableOperation = start(NfcReadProgressObserver.NONE, callback)
@@ -308,18 +335,29 @@ public class AndroidNfcTagDiscovery(
                         null
                     }
                 if (readerModeActivity === desired) {
-                    ReaderModeUpdate(reportActive = active?.takeIf { desired != null && readerModeEnabled })
+                    ReaderModeUpdate(
+                        reportActive =
+                            active?.takeIf {
+                                desired != null && (readerModeEnabled || foregroundDispatchEnabled)
+                            },
+                    )
                 } else {
                     val previous = readerModeActivity
                     readerModeActivity = desired
                     readerModeEnabled = false
+                    foregroundDispatchEnabled = false
                     ReaderModeUpdate(
                         disable = previous,
                         enable = desired,
                     )
                 }
             }
-        update.disable?.let { host -> runOnHost(host) { runCatching { adapter?.disableReaderMode(host) } } }
+        update.disable?.let { host ->
+            runOnHost(host) {
+                runCatching { adapter?.disableForegroundDispatch(host) }
+                runCatching { adapter?.disableReaderMode(host) }
+            }
+        }
         val enable = update.enable
         if (enable == null) {
             update.reportActive?.reportReaderActive()
@@ -341,44 +379,77 @@ public class AndroidNfcTagDiscovery(
                 failPending(NfcFailure.UNAVAILABLE)
                 return@runOnHost
             }
-            try {
-                currentAdapter.enableReaderMode(
-                    enable,
-                    ::onTagDiscovered,
-                    NfcAdapter.FLAG_READER_NFC_A or
-                        NfcAdapter.FLAG_READER_NFC_B or
-                        NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
-                    null,
-                )
-                diagnosticSink.recordSafely(
-                    NfcDiagnosticEvent(NfcDiagnosticStage.READER_MODE, NfcDiagnosticStatus.SUCCEEDED),
-                )
-                val current =
-                    synchronized(this) {
-                        if (readerModeActivity === enable) {
-                            readerModeEnabled = true
-                            active
-                        } else {
-                            null
-                        }
-                    }
-                if (current == null) {
-                    runCatching { currentAdapter.disableReaderMode(enable) }
-                } else {
-                    current.reportReaderActive()
+            diagnosticSink.recordSafely(
+                NfcDiagnosticEvent(NfcDiagnosticStage.FOREGROUND_DISPATCH, NfcDiagnosticStatus.STARTED),
+            )
+            val foregroundReady =
+                try {
+                    currentAdapter.enableForegroundDispatch(
+                        enable,
+                        foregroundDispatchIntent(enable),
+                        null,
+                        arrayOf(arrayOf(IsoDep::class.java.name)),
+                    )
+                    diagnosticSink.recordSafely(
+                        NfcDiagnosticEvent(
+                            NfcDiagnosticStage.FOREGROUND_DISPATCH,
+                            NfcDiagnosticStatus.SUCCEEDED,
+                        ),
+                    )
+                    true
+                } catch (_: RuntimeException) {
+                    diagnosticSink.recordSafely(
+                        NfcDiagnosticEvent(
+                            NfcDiagnosticStage.FOREGROUND_DISPATCH,
+                            NfcDiagnosticStatus.FAILED,
+                            NfcFailure.TECHNICAL_ERROR,
+                        ),
+                    )
+                    false
                 }
-            } catch (_: RuntimeException) {
+            val readerReady =
+                try {
+                    currentAdapter.enableReaderMode(
+                        enable,
+                        ::onTagDiscovered,
+                        NfcAdapter.FLAG_READER_NFC_A or
+                            NfcAdapter.FLAG_READER_NFC_B or
+                            NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
+                        null,
+                    )
+                    diagnosticSink.recordSafely(
+                        NfcDiagnosticEvent(NfcDiagnosticStage.READER_MODE, NfcDiagnosticStatus.SUCCEEDED),
+                    )
+                    true
+                } catch (_: RuntimeException) {
+                    diagnosticSink.recordSafely(
+                        NfcDiagnosticEvent(
+                            NfcDiagnosticStage.READER_MODE,
+                            NfcDiagnosticStatus.FAILED,
+                            NfcFailure.TECHNICAL_ERROR,
+                        ),
+                    )
+                    false
+                }
+            val current =
                 synchronized(this) {
-                    if (readerModeActivity === enable) readerModeEnabled = false
+                    if (readerModeActivity === enable) {
+                        readerModeEnabled = readerReady
+                        foregroundDispatchEnabled = foregroundReady
+                        active?.takeIf { readerReady || foregroundReady }
+                    } else {
+                        null
+                    }
                 }
-                diagnosticSink.recordSafely(
-                    NfcDiagnosticEvent(
-                        NfcDiagnosticStage.READER_MODE,
-                        NfcDiagnosticStatus.FAILED,
-                        NfcFailure.TECHNICAL_ERROR,
-                    ),
-                )
-                failPending(NfcFailure.TECHNICAL_ERROR)
+            if (current != null) {
+                current.reportReaderActive()
+            } else {
+                runCatching { currentAdapter.disableForegroundDispatch(enable) }
+                runCatching { currentAdapter.disableReaderMode(enable) }
+                val shouldFail = synchronized(this) { readerModeActivity === enable && active != null }
+                if (shouldFail && !readerReady && !foregroundReady) {
+                    failPending(NfcFailure.TECHNICAL_ERROR)
+                }
             }
         }
     }
@@ -446,6 +517,25 @@ public class AndroidNfcTagDiscovery(
         ) {
             activity.runOnUiThread { block() }
         }
+
+        fun foregroundDispatchIntent(activity: Activity): PendingIntent {
+            val intent =
+                Intent(activity, activity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            val mutabilityFlag =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_MUTABLE
+                } else {
+                    0
+                }
+            return PendingIntent.getActivity(
+                activity,
+                FOREGROUND_DISPATCH_REQUEST_CODE,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or mutabilityFlag,
+            )
+        }
+
+        const val FOREGROUND_DISPATCH_REQUEST_CODE: Int = 0x4E4643
     }
 }
 

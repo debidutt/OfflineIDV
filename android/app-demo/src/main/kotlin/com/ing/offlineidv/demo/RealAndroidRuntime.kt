@@ -2,6 +2,7 @@ package com.ing.offlineidv.demo
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.os.Handler
 import android.os.Looper
@@ -702,6 +703,10 @@ internal class RealAndroidVerificationRuntime(
 
     fun detachNfcHost(activity: Activity) {
         nfcTagDiscovery.detach(activity)
+    }
+
+    fun acceptNfcIntent(intent: Intent) {
+        nfcTagDiscovery.acceptForegroundIntent(intent)
     }
 
     fun nfcCapability(): NfcCapability = nfcCapabilityDetector.detect()

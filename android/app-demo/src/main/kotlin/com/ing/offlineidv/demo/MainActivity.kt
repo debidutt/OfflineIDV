@@ -3,6 +3,7 @@
 package com.ing.offlineidv.demo
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -74,6 +75,11 @@ public class MainActivity : ComponentActivity() {
     override fun onPause() {
         viewModel.detachNfcHost(this)
         super.onPause()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        viewModel.acceptNfcIntent(intent)
     }
 
     override fun onDestroy() {

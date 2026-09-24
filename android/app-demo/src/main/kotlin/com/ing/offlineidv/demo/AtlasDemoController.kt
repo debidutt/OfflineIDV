@@ -1,6 +1,7 @@
 package com.ing.offlineidv.demo
 
 import android.app.Activity
+import android.content.Intent
 import com.ing.offlineidv.core.config.DemoScenario
 import com.ing.offlineidv.core.config.IdvConfig
 import com.ing.offlineidv.core.result.IdvResult
@@ -259,6 +260,10 @@ internal class AtlasDemoController(
     fun detachNfcHost(activity: Activity) {
         if (nfcHost === activity) nfcHost = null
         realRuntime?.detachNfcHost(activity)
+    }
+
+    fun acceptNfcIntent(intent: Intent) {
+        realRuntime?.acceptNfcIntent(intent)
     }
 
     fun nfcCapability(): com.ing.offlineidv.nfc.NfcCapability? = realRuntime?.nfcCapability()

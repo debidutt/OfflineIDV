@@ -263,6 +263,7 @@ public fun interface NfcReadProgressObserver {
 /** Coarse protocol stages accepted by privacy-safe debug diagnostics. */
 public enum class NfcDiagnosticStage {
     READER_MODE,
+    FOREGROUND_DISPATCH,
     TAG_DISCOVERY,
     ISO_DEP,
     CARD_ACCESS,

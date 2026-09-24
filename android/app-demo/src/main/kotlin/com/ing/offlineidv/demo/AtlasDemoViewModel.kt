@@ -2,6 +2,7 @@ package com.ing.offlineidv.demo
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import androidx.camera.core.Preview
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +59,10 @@ internal class AtlasDemoViewModel(
 
     fun detachNfcHost(activity: Activity) {
         controller.detachNfcHost(activity)
+    }
+
+    fun acceptNfcIntent(intent: Intent) {
+        controller.acceptNfcIntent(intent)
     }
 
     fun refreshNfcAvailability() {
